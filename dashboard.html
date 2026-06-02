@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADR Coil Engine · Market OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#080c10; --surface:#0d1318; --card:#111820;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e2e8f0; --muted:#64748b; --dim:#334155;
+  --teal:#0fd4a0; --teal2:#0a8f6c; --teal-bg:rgba(15,212,160,0.08);
+  --blue:#3b82f6; --blue-bg:rgba(59,130,246,0.08);
+  --amber:#f59e0b; --amber-bg:rgba(245,158,11,0.08);
+  --red:#ef4444; --red-bg:rgba(239,68,68,0.08);
+  --purple:#a78bfa; --purple-bg:rgba(167,139,250,0.08);
+  --coral:#fb923c; --coral-bg:rgba(251,146,60,0.08);
+  --font-mono:'Space Mono',monospace;
+  --font-display:'Syne',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--text);font-family:var(--font-display);min-height:100vh;}
+::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:var(--surface);} ::-webkit-scrollbar-thumb{background:var(--dim);}
+
+/* ── LAYOUT ── */
+.app{display:grid;grid-template-rows:56px 1fr;min-height:100vh;}
+.header{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:100;}
+.logo{font-size:15px;font-weight:800;letter-spacing:-0.02em;color:var(--text);}
+.logo span{color:var(--teal);}
+.header-right{display:flex;align-items:center;gap:12px;}
+.status-pill{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:11px;font-family:var(--font-mono);color:var(--muted);}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--dim);flex-shrink:0;transition:background .3s;}
+.status-dot.live{background:var(--teal);box-shadow:0 0 6px var(--teal);}
+.status-dot.error{background:var(--red);}
+.status-dot.loading{background:var(--amber);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.main{display:grid;grid-template-columns:280px 1fr;gap:0;overflow:hidden;height:calc(100vh - 56px);}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:20px 16px;}
+.content{overflow-y:auto;padding:20px;}
+
+/* ── API SETUP PANEL ── */
+.setup-panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+.setup-title{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:6px;}
+.input-group{margin-bottom:10px;}
+.input-label{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:5px;display:block;}
+.input-field{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);color:var(--text);outline:none;transition:border-color .2s;}
+.input-field:focus{border-color:var(--teal);}
+.input-field::placeholder{color:var(--dim);}
+.btn{width:100%;background:var(--teal);border:none;border-radius:7px;padding:9px;font-size:12px;font-family:var(--font-display);font-weight:600;color:#020a07;cursor:pointer;transition:all .2s;letter-spacing:.02em;}
+.btn:hover{background:#0fefb5;transform:translateY(-1px);}
+.btn:active{transform:translateY(0);}
+.btn.secondary{background:transparent;border:1px solid var(--border);color:var(--muted);margin-top:6px;}
+.btn.secondary:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-bg);}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+
+/* ── TICKER WATCHLIST ── */
+.watchlist-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:7px;cursor:pointer;transition:background .15s;margin-bottom:3px;}
+.watchlist-item:hover{background:var(--card);}
+.watchlist-item.active{background:var(--teal-bg);border:1px solid rgba(15,212,160,.2);}
+.wi-ticker{font-size:13px;font-weight:700;font-family:var(--font-mono);}
+.wi-score{font-size:10px;font-family:var(--font-mono);font-weight:700;padding:2px 7px;border-radius:4px;}
+.wi-signal{font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* ── SECTION LABELS ── */
+.sl{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin:16px 0 8px;display:flex;align-items:center;gap:6px;}
+.sl::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ── METRIC GRID ── */
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:16px;}
+.metric{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.metric-label{font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:5px;}
+.metric-value{font-size:22px;font-weight:800;letter-spacing:-0.03em;}
+.metric-sub{font-size:10px;color:var(--muted);margin-top:3px;}
+.metric.highlight{border-color:var(--teal);background:var(--teal-bg);}
+.metric.warn{border-color:var(--amber);background:var(--amber-bg);}
+.metric.danger{border-color:var(--red);background:var(--red-bg);}
+.metric.purple{border-color:var(--purple);background:var(--purple-bg);}
+
+/* ── SIGNAL BADGE ── */
+.signal-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em;font-family:var(--font-mono);}
+.sb-hg{background:var(--purple-bg);color:var(--purple);border:1px solid rgba(167,139,250,.3);}
+.sb-wl{background:var(--blue-bg);color:var(--blue);border:1px solid rgba(59,130,246,.3);}
+.sb-ex{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.3);}
+.sb-boring{background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--border);}
+.sb-live{background:var(--teal-bg);color:var(--teal);border:1px solid rgba(15,212,160,.3);}
+
+/* ── SCORE RING ── */
+.score-ring-wrap{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px;}
+.score-ring{width:80px;height:80px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid var(--border);flex-shrink:0;transition:border-color .3s;}
+.sr-num{font-size:26px;font-weight:800;font-family:var(--font-mono);}
+.sr-lbl{font-size:9px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;}
+.score-detail{flex:1;}
+.score-title{font-size:16px;font-weight:800;margin-bottom:4px;}
+.score-body{font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:8px;}
+
+/* ── BAR ── */
+.bar-row{margin-bottom:7px;}
+.bar-label{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:var(--font-mono);margin-bottom:3px;}
+.bar-track{background:rgba(255,255,255,.05);border-radius:3px;height:4px;overflow:hidden;}
+.bar-fill{height:4px;border-radius:3px;transition:width .5s ease;}
+
+/* ── CHART ── */
+.chart-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
+.chart-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;}
+.chart-title{font-size:12px;font-weight:600;color:var(--text);}
+.chart-sub{font-size:10px;color:var(--muted);font-family:var(--font-mono);}
+canvas{width:100% !important;border-radius:6px;}
+
+/* ── FLOW TABLE ── */
+.flow-table{width:100%;border-collapse:collapse;font-size:11px;}
+.flow-table th{font-size:9px;font-family:var(--font-mono);color:var(--muted);font-weight:600;padding:6px 10px 6px 0;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+.flow-table td{padding:9px 10px 9px 0;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+.flow-table tr:last-child td{border:none;}
+.flow-table tr:hover td{background:rgba(255,255,255,.02);}
+.t-ticker{font-weight:700;font-family:var(--font-mono);color:var(--text);}
+.t-num{font-family:var(--font-mono);color:var(--text);}
+.t-green{color:var(--teal);}
+.t-red{color:var(--red);}
+.t-amber{color:var(--amber);}
+.t-muted{color:var(--muted);}
+
+/* ── NET IMPACT BARS ── */
+.impact-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;}
+.impact-row:last-child{border:none;}
+.ir-ticker{width:52px;font-weight:700;font-family:var(--font-mono);flex-shrink:0;}
+.ir-bar-wrap{flex:1;display:flex;align-items:center;gap:4px;}
+.ir-call{height:5px;border-radius:2px;background:var(--teal);transition:width .5s;}
+.ir-put{height:5px;border-radius:2px;background:var(--red);transition:width .5s;}
+.ir-net{font-size:10px;font-family:var(--font-mono);width:60px;text-align:right;flex-shrink:0;}
+
+/* ── TWO COL GRID ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:12px;font-family:var(--font-mono);z-index:999;transform:translateY(80px);transition:transform .3s;max-width:300px;}
+.toast.show{transform:translateY(0);}
+.toast.ok{border-color:var(--teal);color:var(--teal);}
+.toast.err{border-color:var(--red);color:var(--red);}
+
+/* ── WS TICKER TAPE ── */
+.tape{background:var(--surface);border-bottom:1px solid var(--border);height:28px;overflow:hidden;display:flex;align-items:center;padding:0 12px;gap:16px;font-size:10px;font-family:var(--font-mono);color:var(--muted);}
+.tape-item{white-space:nowrap;display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.tape-price{color:var(--text);}
+.tape-chg.up{color:var(--teal);}
+.tape-chg.dn{color:var(--red);}
+
+/* ── EMPTY STATE ── */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;color:var(--dim);gap:10px;}
+.empty-icon{font-size:36px;opacity:.3;}
+.empty-text{font-size:13px;}
+.empty-sub{font-size:11px;color:var(--muted);}
+
+/* ── TABS ── */
+.tab-row{display:flex;gap:4px;background:var(--card);border-radius:9px;padding:3px;margin-bottom:16px;}
+.tab{flex:1;padding:7px;text-align:center;font-size:11px;font-weight:600;border-radius:7px;cursor:pointer;color:var(--muted);transition:all .2s;}
+.tab.active{background:var(--surface);color:var(--text);border:1px solid var(--border);}
+
+/* ── LOADING SPINNER ── */
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.loading-overlay{position:absolute;inset:0;background:rgba(8,12,16,.7);display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:10;}
+.relative{position:relative;}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">ADR <span>Coil Engine</span> <span style="font-size:10px;color:var(--dim);font-weight:400;font-family:var(--font-mono);">v2.0 · Market OS</span></div>
+  <div class="header-right">
+    <div id="tape" class="tape" style="width:500px;border:none;border-radius:8px;"></div>
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Not connected</span>
+    </div>
+    <div class="status-pill" id="ws-pill" style="display:none;">
+      <div class="status-dot loading" id="ws-dot"></div>
+      <span id="ws-text">WS connecting...</span>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- API SETUP -->
+    <div class="setup-panel">
+      <div class="setup-title">
+        <span style="color:var(--teal);">⬡</span> API Connection
+      </div>
+      <div class="input-group">
+        <label class="input-label">MASSIVE API KEY</label>
+        <input class="input-field" type="password" id="api-key" placeholder="paste your key here" autocomplete="off">
+      </div>
+      <div class="input-group">
+        <label class="input-label">WATCHLIST TICKERS (comma separated)</label>
+        <input class="input-field" type="text" id="watchlist-input" value="MSFT,NVDA,META,HOOD,QQQ,SPY,ONDS" placeholder="MSFT,NVDA,META,...">
+      </div>
+      <div class="input-group">
+        <label class="input-label">ADR LOOKBACK DAYS</label>
+        <input class="input-field" type="number" id="adr-days" value="20" min="5" max="50">
+      </div>
+      <button class="btn" id="connect-btn" onclick="connectAndScan()">Connect &amp; Scan</button>
+      <button class="btn secondary" id="ws-btn" onclick="toggleWebSocket()" style="display:none;">Connect Live WebSocket</button>
+    </div>
+
+    <!-- WATCHLIST -->
+    <div class="sl">Watchlist</div>
+    <div id="watchlist-panel">
+      <div class="empty" style="height:100px;">
+        <div class="empty-sub">Connect API to populate</div>
+      </div>
+    </div>
+
+    <!-- ADR THRESHOLDS -->
+    <div class="sl">ADR Thresholds</div>
+    <div class="card" style="font-size:10px;font-family:var(--font-mono);line-height:2;">
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--purple);">Holy Grail</span><span>ADR≥4% · Comp≤0.35×</span></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--blue);">Watchlist</span><span>ADR≥3% · Comp≤0.50×</span></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--red);">Expanded</span><span>Comp≥0.80×</span></div>
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Ignore</span><span>ADR&lt;2.5%</span></div>
+    </div>
+
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <!-- TABS -->
+    <div class="tab-row">
+      <div class="tab active" onclick="switchTab('adr')">ADR Coil Engine</div>
+      <div class="tab" onclick="switchTab('flow')">Flow Scanner</div>
+      <div class="tab" onclick="switchTab('impact')">Net Impact</div>
+      <div class="tab" onclick="switchTab('drilldown')">Contract Drilldown</div>
+    </div>
+
+    <!-- TAB: ADR -->
+    <div id="tab-adr">
+      <div id="adr-empty" class="empty">
+        <div class="empty-icon">◎</div>
+        <div class="empty-text">ADR Coil Engine</div>
+        <div class="empty-sub">Enter your API key and click Connect &amp; Scan</div>
+      </div>
+      <div id="adr-content" style="display:none;">
+        <div class="score-ring-wrap">
+          <div class="score-ring" id="adr-ring">
+            <div class="sr-num" id="adr-score-num">—</div>
+            <div class="sr-lbl">Score</div>
+          </div>
+          <div class="score-detail">
+            <div class="score-title" id="adr-sig-title">—</div>
+            <div class="score-body" id="adr-sig-body">—</div>
+            <div id="adr-sig-badges"></div>
+          </div>
+        </div>
+        <div class="metric-grid" id="adr-metrics"></div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="sl" style="margin-top:0;">Score breakdown</div>
+          <div id="adr-bars"></div>
+        </div>
+        <div class="card">
+          <div class="sl" style="margin-top:0;">All tickers ranked</div>
+          <table class="flow-table" id="adr-table">
+            <thead><tr>
+              <th>Ticker</th><th>ADR%</th><th>Today%</th><th>Compression</th><th>Exp left</th><th>Score</th><th>Signal</th>
+            </tr></thead>
+            <tbody id="adr-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: FLOW -->
+    <div id="tab-flow" style="display:none;">
+      <div id="flow-empty" class="empty">
+        <div class="empty-icon">⬡</div>
+        <div class="empty-text">Unusual Flow Scanner</div>
+        <div class="empty-sub">Replicates Flow Compass — Top Contracts Today</div>
+      </div>
+      <div id="flow-content" style="display:none;">
+        <div class="grid2" style="margin-bottom:16px;">
+          <div class="card">
+            <div class="sl" style="margin-top:0;">Filter</div>
+            <div class="input-group"><label class="input-label">Min Vol/OI ratio</label><input class="input-field" id="f-voloi" type="number" value="3" step="0.5"></div>
+            <div class="input-group"><label class="input-label">Max DTE</label><input class="input-field" id="f-dte" type="number" value="90"></div>
+            <div class="input-group"><label class="input-label">Type</label>
+              <select class="input-field" id="f-type">
+                <option value="all">All</option>
+                <option value="call">Calls only</option>
+                <option value="put">Puts only</option>
+              </select>
+            </div>
+            <button class="btn secondary" onclick="applyFlowFilter()">Apply filter</button>
+          </div>
+          <div class="card">
+            <div class="sl" style="margin-top:0;">Summary</div>
+            <div id="flow-summary" style="font-size:11px;font-family:var(--font-mono);line-height:2;color:var(--muted);">Run scan to see summary</div>
+          </div>
+        </div>
+        <div class="card relative" id="flow-table-wrap">
+          <table class="flow-table">
+            <thead><tr>
+              <th>#</th><th>Contract</th><th>Type</th><th>DTE</th><th>Vol/OI</th><th>Volume</th><th>OI</th><th>Premium</th><th>OTM%</th><th>Bias</th><th>Signal</th>
+            </tr></thead>
+            <tbody id="flow-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: IMPACT -->
+    <div id="tab-impact" style="display:none;">
+      <div id="impact-empty" class="empty">
+        <div class="empty-icon">⬡</div>
+        <div class="empty-text">Net Impact — Call vs Put Premium</div>
+        <div class="empty-sub">Replicates Flow Compass — Net Impact column</div>
+      </div>
+      <div id="impact-content" style="display:none;">
+        <div class="grid2">
+          <div class="card">
+            <div class="sl" style="margin-top:0;">Net impact by ticker (call − put premium)</div>
+            <div id="impact-ticker-list"></div>
+          </div>
+          <div class="card">
+            <div class="sl" style="margin-top:0;">By industry / sector</div>
+            <div id="impact-industry-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: DRILLDOWN -->
+    <div id="tab-drilldown" style="display:none;">
+      <div class="card" style="margin-bottom:16px;">
+        <div class="sl" style="margin-top:0;">Contract lookup</div>
+        <div style="display:flex;gap:8px;">
+          <input class="input-field" id="dd-underlying" placeholder="Underlying (e.g. META)" style="width:120px;">
+          <input class="input-field" id="dd-strike" placeholder="Strike (e.g. 612.5)" style="width:120px;">
+          <select class="input-field" id="dd-type" style="width:100px;">
+            <option value="call">Call</option>
+            <option value="put">Put</option>
+          </select>
+          <input class="input-field" id="dd-expiry" placeholder="Expiry YYYY-MM-DD" style="flex:1;">
+          <button class="btn" style="width:120px;flex-shrink:0;" onclick="loadDrilldown()">Load</button>
+        </div>
+      </div>
+      <div id="dd-empty" class="empty">
+        <div class="empty-icon">◎</div>
+        <div class="empty-text">Contract Drilldown</div>
+        <div class="empty-sub">Replicates Flowseeker contract view — enter a contract above</div>
+      </div>
+      <div id="dd-content" style="display:none;">
+        <div class="metric-grid" id="dd-metrics"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="sl" style="margin-top:0;">Greeks &amp; IV</div>
+            <div id="dd-greeks"></div>
+          </div>
+          <div class="card">
+            <div class="sl" style="margin-top:0;">Flow bias (bar approx)</div>
+            <div id="dd-bias"></div>
+          </div>
+        </div>
+        <div class="chart-wrap" style="margin-top:12px;">
+          <div class="chart-header">
+            <div class="chart-title" id="dd-chart-title">5-min bars</div>
+            <div class="chart-sub" id="dd-chart-sub"></div>
+          </div>
+          <canvas id="dd-chart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════════
+const BASE = "https://api.massive.com";
+const WS_BASE = "wss://socket.massive.com/stocks";
+
+let API_KEY = "";
+let ws = null;
+let currentTicker = null;
+let scanResults = {};   // { ticker: { adr, snapshot } }
+let flowResults = [];
+let chartInstance = null;
+
+// ═══════════════════════════════════════════════════════════════════
+// MASSIVE API CALLS
+// ═══════════════════════════════════════════════════════════════════
+
+async function massiveFetch(path, params = {}) {
+  const url = new URL(BASE + path);
+  url.searchParams.set("apiKey", API_KEY);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`HTTP ${res.status} — ${path}`);
+  return res.json();
+}
+
+// Daily bars for ADR (stocks endpoint)
+async function getDailyBars(ticker, days = 20) {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - Math.ceil(days * 1.4));
+  const f = d => d.toISOString().slice(0,10);
+  const json = await massiveFetch(`/v2/aggs/ticker/${ticker}/range/1/day/${f(from)}/${f(to)}`, {
+    adjusted:"true", sort:"desc", limit: days + 5
+  });
+  return (json.results || []).map(b => ({ high:b.h, low:b.l, close:b.c, volume:b.v, timestamp:b.t }));
+}
+
+// Intraday bars (stocks — for ADR compression)
+async function getIntradayBars(ticker) {
+  const today = new Date().toISOString().slice(0,10);
+  const json = await massiveFetch(`/v2/aggs/ticker/${ticker}/range/1/minute/${today}/${today}`, {
+    adjusted:"true", sort:"asc", limit:500
+  });
+  const bars = json.results || [];
+  if (!bars.length) return { todayHigh:null, todayLow:null, currentPrice:null };
+  return {
+    todayHigh: Math.max(...bars.map(b=>b.h)),
+    todayLow:  Math.min(...bars.map(b=>b.l)),
+    currentPrice: bars[bars.length-1].c,
+  };
+}
+
+// Options chain snapshot
+async function getChainSnapshot(underlying) {
+  const json = await massiveFetch(`/v3/snapshot/options/${underlying}`, { limit:250 });
+  return (json.results || []).map(normalizeSnap);
+}
+
+// Single options contract snapshot
+async function getContractSnapshot(underlying, contractTicker) {
+  const json = await massiveFetch(`/v3/snapshot/options/${underlying}/${contractTicker}`);
+  return normalizeSnap(json.results);
+}
+
+// Options bars for drilldown chart
+async function getOptionsBars(optionsTicker, mult=5) {
+  const today = new Date().toISOString().slice(0,10);
+  const json = await massiveFetch(
+    `/v2/aggs/ticker/${optionsTicker}/range/${mult}/minute/${today}/${today}`,
+    { adjusted:"true", sort:"asc", limit:500 }
+  );
+  const bars = json.results || [];
+  let cumV=0, cumPV=0;
+  return bars.map(b => {
+    const tp=(b.h+b.l+b.c)/3; cumV+=b.v; cumPV+=tp*b.v;
+    return { t:b.t, o:b.o, h:b.h, l:b.l, c:b.c, v:b.v, vwap:cumV>0?cumPV/cumV:null };
+  });
+}
+
+function normalizeSnap(r) {
+  if (!r) return null;
+  const d=r.details||{}, g=r.greeks||{}, q=r.last_quote||{}, t=r.last_trade||{}, u=r.underlying_asset||{}, day=r.day||{};
+  const strike=d.strike_price, exp=d.expiration_date, uPrice=u.price;
+  const lastPrice=t.price||((q.ask+q.bid)/2)||null;
+  const dte=exp?Math.ceil((new Date(exp)-Date.now())/86400000):null;
+  const otmPct=(strike&&uPrice&&d.contract_type==="call")?((strike-uPrice)/uPrice)*100:(strike&&uPrice)?((uPrice-strike)/uPrice)*100:null;
+  const volOiRatio=(day.volume&&r.open_interest)?+(day.volume/r.open_interest).toFixed(2):null;
+  const premium=(lastPrice&&day.volume)?+(lastPrice*day.volume*100).toFixed(0):null;
+  return {
+    ticker:r.ticker, underlying:u.ticker||d.underlying_ticker,
+    type:d.contract_type, strike, expiration:exp, dte,
+    otmPct:otmPct!=null?+otmPct.toFixed(2):null,
+    volOiRatio, premium,
+    lastPrice, bid:q.bid, ask:q.ask,
+    mid:(q.bid&&q.ask)?+((q.bid+q.ask)/2).toFixed(4):null,
+    volume:day.volume, openInterest:r.open_interest,
+    delta:g.delta, gamma:g.gamma, theta:g.theta, vega:g.vega,
+    iv:r.implied_volatility,
+    underlyingPrice:uPrice,
+    flowBias:lastPrice&&q.ask&&q.bid?(lastPrice>=q.ask?"ASK":lastPrice<=q.bid?"BID":"MID"):null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ADR COMPUTATION (core/adr.js logic — inline)
+// ═══════════════════════════════════════════════════════════════════
+
+function computeADR(bars, n=20) {
+  const sample = bars.slice(0,n);
+  if (sample.length < 3) throw new Error("Not enough bars");
+  const ranges = sample.map(b => +((( b.high-b.low)/b.close)*100).toFixed(4));
+  const adrPct = +(ranges.reduce((s,r)=>s+r,0)/ranges.length).toFixed(4);
+  return { adrPct, ranges, high:Math.max(...ranges), low:Math.min(...ranges), n:sample.length };
+}
+
+function computeCompression(intra, adrPct) {
+  if (!intra.todayHigh||!intra.currentPrice) return { todayRangePct:null, compressionRatio:null, expansionLeft:null };
+  const todayRangePct = +(((intra.todayHigh-intra.todayLow)/intra.currentPrice)*100).toFixed(4);
+  const compressionRatio = +(todayRangePct/adrPct).toFixed(4);
+  const expLeft = Math.max(0,(adrPct/100*intra.currentPrice)-(intra.todayHigh-intra.todayLow));
+  return { todayRangePct, compressionRatio, expansionLeft:+expLeft.toFixed(4) };
+}
+
+function scoreAndClassify(adrPct, compressionRatio=0.5, flow=0, wall=0, tape=0) {
+  const adrScore = Math.min(40,(adrPct/8)*40);
+  let compScore=0;
+  if(compressionRatio<=0.20)compScore=30;
+  else if(compressionRatio<=0.35)compScore=26;
+  else if(compressionRatio<=0.50)compScore=20;
+  else if(compressionRatio<=0.65)compScore=12;
+  else if(compressionRatio<=0.80)compScore=5;
+  const confScore=((flow+wall+tape)/6)*30;
+  const total=Math.min(100,+(adrScore+compScore+confScore).toFixed(1));
+  let signal,label,color;
+  if(adrPct>=4&&compressionRatio<=0.35&&total>=80){signal="HOLY_GRAIL_COIL";label="Holy grail coil";color=getComputedStyle(document.documentElement).getPropertyValue('--purple').trim();}
+  else if(compressionRatio>=0.80){signal="MOVE_ALREADY_EXPANDED";label="Move expanded";color="var(--red)";}
+  else if(adrPct>=3&&compressionRatio<=0.50){signal="WATCHLIST_COIL";label="Watchlist coil";color="var(--blue)";}
+  else if(adrPct<2.5){signal="TOO_BORING";label="Ignore";color="var(--muted)";}
+  else{signal="BORDERLINE";label="Borderline";color="var(--amber)";}
+  return { total, adrScore:+adrScore.toFixed(1), compScore, confScore:+confScore.toFixed(1), signal, label, color };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN SCAN
+// ═══════════════════════════════════════════════════════════════════
+
+async function connectAndScan() {
+  API_KEY = document.getElementById("api-key").value.trim();
+  if (!API_KEY) { showToast("Enter your Massive API key first", "err"); return; }
+
+  const tickerStr = document.getElementById("watchlist-input").value;
+  const tickers = tickerStr.split(",").map(t=>t.trim().toUpperCase()).filter(Boolean);
+  const days = parseInt(document.getElementById("adr-days").value)||20;
+
+  setStatus("loading","Scanning...");
+  document.getElementById("connect-btn").disabled = true;
+  document.getElementById("connect-btn").textContent = "Scanning...";
+
+  scanResults = {};
+  try {
+    await Promise.allSettled(tickers.map(async t => {
+      try {
+        const [daily, intra] = await Promise.all([getDailyBars(t, days), getIntradayBars(t)]);
+        const { adrPct, ranges } = computeADR(daily, days);
+        const comp = computeCompression(intra, adrPct);
+        const scored = scoreAndClassify(adrPct, comp.compressionRatio||0.5);
+        scanResults[t] = { adrPct, compression:comp, scored, intra, daily };
+      } catch(e) { console.warn(t, e.message); }
+    }));
+
+    setStatus("live","Connected");
+    showToast(`Scanned ${Object.keys(scanResults).length} tickers`, "ok");
+    document.getElementById("ws-btn").style.display = "block";
+    renderWatchlist(tickers);
+    if (tickers[0]) selectTicker(tickers[0]);
+    renderADRTable(tickers);
+    // Also scan flow
+    await scanFlow(tickers);
+  } catch(e) {
+    setStatus("error","Error: "+e.message);
+    showToast(e.message,"err");
+  }
+  document.getElementById("connect-btn").disabled = false;
+  document.getElementById("connect-btn").textContent = "Rescan";
+}
+
+function selectTicker(ticker) {
+  currentTicker = ticker;
+  document.querySelectorAll(".watchlist-item").forEach(el => el.classList.toggle("active", el.dataset.ticker===ticker));
+  renderADRDetail(ticker);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FLOW SCANNER
+// ═══════════════════════════════════════════════════════════════════
+
+async function scanFlow(tickers) {
+  flowResults = [];
+  await Promise.allSettled(tickers.map(async t => {
+    try {
+      const chain = await getChainSnapshot(t);
+      chain.forEach(c => { if(c) flowResults.push(c); });
+    } catch(e) { console.warn("Flow scan", t, e.message); }
+  }));
+  renderFlowTable();
+  renderNetImpact();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — WATCHLIST
+// ═══════════════════════════════════════════════════════════════════
+
+function renderWatchlist(tickers) {
+  const panel = document.getElementById("watchlist-panel");
+  panel.innerHTML = tickers.map(t => {
+    const r = scanResults[t];
+    const score = r?.scored.total ?? "—";
+    const signal = r?.scored.signal ?? "";
+    const sigClass = signal==="HOLY_GRAIL_COIL"?"sb-hg":signal==="WATCHLIST_COIL"?"sb-wl":signal==="MOVE_ALREADY_EXPANDED"?"sb-ex":"sb-boring";
+    const scoreColor = signal==="HOLY_GRAIL_COIL"?"var(--purple)":signal==="WATCHLIST_COIL"?"var(--blue)":signal==="MOVE_ALREADY_EXPANDED"?"var(--red)":"var(--muted)";
+    return `<div class="watchlist-item" data-ticker="${t}" onclick="selectTicker('${t}')">
+      <div>
+        <div class="wi-ticker" style="color:var(--text);">${t}</div>
+        <div class="wi-signal">${r?.scored.label||"—"}</div>
+      </div>
+      <div class="wi-score" style="color:${scoreColor};background:rgba(0,0,0,.3);">${typeof score==="number"?Math.round(score):"—"}</div>
+    </div>`;
+  }).join("");
+  if (currentTicker) document.querySelectorAll(".watchlist-item").forEach(el => el.classList.toggle("active",el.dataset.ticker===currentTicker));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — ADR DETAIL
+// ═══════════════════════════════════════════════════════════════════
+
+function renderADRDetail(ticker) {
+  const r = scanResults[ticker];
+  document.getElementById("adr-empty").style.display = r ? "none" : "flex";
+  document.getElementById("adr-content").style.display = r ? "block" : "none";
+  if (!r) return;
+
+  const { adrPct, compression, scored, intra } = r;
+  const { compressionRatio, todayRangePct, expansionLeft } = compression;
+  const { total, adrScore, compScore, confScore, signal, label, color } = scored;
+
+  // Ring
+  const ring = document.getElementById("adr-ring");
+  ring.style.borderColor = color;
+  document.getElementById("adr-score-num").style.color = color;
+  document.getElementById("adr-score-num").textContent = Math.round(total);
+  document.getElementById("adr-sig-title").textContent = label;
+  const bodyMap = {
+    HOLY_GRAIL_COIL:"Maximum explosive setup. High ADR + ultra-tight compression. Enter small on Stealth Strike delta 0.05–0.15.",
+    WATCHLIST_COIL:"Good setup forming. Needs one more confluence signal to graduate to Holy Grail.",
+    MOVE_ALREADY_EXPANDED:"ADR already consumed intraday. Do not chase. Wait for next session reset.",
+    TOO_BORING:"Low ADR stock — lacks range needed for explosive options moves.",
+    BORDERLINE:"Marginal setup. Requires strong catalyst or unusual volume spike.",
+  };
+  document.getElementById("adr-sig-body").textContent = bodyMap[signal]||"";
+
+  // Metrics
+  document.getElementById("adr-metrics").innerHTML = `
+    <div class="metric ${signal==='HOLY_GRAIL_COIL'?'purple':signal==='MOVE_ALREADY_EXPANDED'?'danger':''}">
+      <div class="metric-label">ADR%</div>
+      <div class="metric-value" style="color:${adrPct>=4?'var(--teal)':adrPct>=2.5?'var(--amber)':'var(--red)'};">${adrPct.toFixed(2)}%</div>
+      <div class="metric-sub">${r.scored.n||20}-day avg</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Today range%</div>
+      <div class="metric-value" style="color:var(--text);">${todayRangePct!=null?todayRangePct.toFixed(2)+'%':'N/A'}</div>
+      <div class="metric-sub">intraday used</div>
+    </div>
+    <div class="metric ${compressionRatio!=null&&compressionRatio<=0.35?'highlight':compressionRatio>=0.80?'danger':''}">
+      <div class="metric-label">Compression</div>
+      <div class="metric-value">${compressionRatio!=null?compressionRatio.toFixed(2)+'×':'N/A'}</div>
+      <div class="metric-sub">today / ADR</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Expansion left</div>
+      <div class="metric-value" style="color:${expansionLeft>0?'var(--teal)':'var(--red)'};">$${expansionLeft!=null?expansionLeft.toFixed(2):'—'}</div>
+      <div class="metric-sub">$ remaining today</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Current price</div>
+      <div class="metric-value">$${intra.currentPrice!=null?intra.currentPrice.toFixed(2):'—'}</div>
+      <div class="metric-sub">underlying</div>
+    </div>
+    <div class="metric ${signal==='HOLY_GRAIL_COIL'?'purple':''}">
+      <div class="metric-label">Score</div>
+      <div class="metric-value" style="color:${color};">${Math.round(total)}</div>
+      <div class="metric-sub">/ 100</div>
+    </div>
+  `;
+
+  // Score bars
+  document.getElementById("adr-bars").innerHTML = `
+    <div class="bar-row"><div class="bar-label"><span>ADR magnitude</span><span>${adrScore.toFixed(1)} / 40</span></div><div class="bar-track"><div class="bar-fill" style="width:${(adrScore/40)*100}%;background:${color};"></div></div></div>
+    <div class="bar-row"><div class="bar-label"><span>Compression</span><span>${compScore} / 30</span></div><div class="bar-track"><div class="bar-fill" style="width:${(compScore/30)*100}%;background:${color};"></div></div></div>
+    <div class="bar-row"><div class="bar-label"><span>Confluence</span><span>${confScore.toFixed(1)} / 30</span></div><div class="bar-track"><div class="bar-fill" style="width:${(confScore/30)*100}%;background:${color};"></div></div></div>
+  `;
+}
+
+function renderADRTable(tickers) {
+  const tbody = document.getElementById("adr-tbody");
+  tbody.innerHTML = tickers.map(t => {
+    const r = scanResults[t];
+    if (!r) return `<tr><td class="t-ticker">${t}</td><td colspan="6" class="t-muted">Error loading</td></tr>`;
+    const { adrPct, compression:{compressionRatio,todayRangePct,expansionLeft}, scored:{total,signal,label,color} } = r;
+    const sigClass=signal==="HOLY_GRAIL_COIL"?"sb-hg":signal==="WATCHLIST_COIL"?"sb-wl":signal==="MOVE_ALREADY_EXPANDED"?"sb-ex":"sb-boring";
+    return `<tr onclick="selectTicker('${t}')" style="cursor:pointer;">
+      <td class="t-ticker">${t}</td>
+      <td class="t-num" style="color:${adrPct>=4?'var(--teal)':adrPct>=2.5?'var(--amber)':'var(--muted)'};">${adrPct.toFixed(2)}%</td>
+      <td class="t-num">${todayRangePct!=null?todayRangePct.toFixed(2)+'%':'—'}</td>
+      <td class="t-num" style="color:${compressionRatio!=null&&compressionRatio<=0.35?'var(--teal)':compressionRatio>=0.80?'var(--red)':'var(--text)'};">${compressionRatio!=null?compressionRatio.toFixed(2)+'×':'—'}</td>
+      <td class="t-num" style="color:var(--teal);">$${expansionLeft!=null?expansionLeft.toFixed(2):'—'}</td>
+      <td class="t-num" style="color:${color};font-weight:700;">${Math.round(total)}</td>
+      <td><span class="signal-badge ${sigClass}">${label}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — FLOW TABLE
+// ═══════════════════════════════════════════════════════════════════
+
+function applyFlowFilter() { renderFlowTable(); }
+
+function renderFlowTable() {
+  const minVolOi = parseFloat(document.getElementById("f-voloi")?.value||3);
+  const maxDte   = parseInt(document.getElementById("f-dte")?.value||90);
+  const typeF    = document.getElementById("f-type")?.value||"all";
+
+  let filtered = flowResults.filter(c =>
+    c && c.volOiRatio >= minVolOi &&
+    c.dte != null && c.dte <= maxDte &&
+    c.volume >= 200 &&
+    (typeF==="all" || c.type===typeF)
+  ).sort((a,b)=>(b.volOiRatio||0)-(a.volOiRatio||0)).slice(0,30);
+
+  document.getElementById("flow-empty").style.display = filtered.length?"none":"flex";
+  document.getElementById("flow-content").style.display = filtered.length?"block":"none";
+
+  // Summary
+  const calls = filtered.filter(c=>c.type==="call");
+  const puts  = filtered.filter(c=>c.type==="put");
+  const totalPrem = filtered.reduce((s,c)=>s+(c.premium||0),0);
+  document.getElementById("flow-summary").innerHTML = `
+    <div>Total contracts: <span style="color:var(--text);">${filtered.length}</span></div>
+    <div>Calls: <span style="color:var(--teal);">${calls.length}</span> &nbsp; Puts: <span style="color:var(--red);">${puts.length}</span></div>
+    <div>Total premium: <span style="color:var(--text);">$${(totalPrem/1e6).toFixed(1)}M</span></div>
+    <div>Avg Vol/OI: <span style="color:var(--text);">${(filtered.reduce((s,c)=>s+(c.volOiRatio||0),0)/Math.max(1,filtered.length)).toFixed(1)}×</span></div>
+  `;
+
+  document.getElementById("flow-tbody").innerHTML = filtered.map((c,i) => {
+    const bias = c.flowBias||"—";
+    const biasColor = bias==="ASK"?"var(--teal)":bias==="BID"?"var(--red)":"var(--muted)";
+    const sig = c.volOiRatio>=10?"EXTREME":c.volOiRatio>=5?"VERY UNUSUAL":"UNUSUAL";
+    const sigClass = c.volOiRatio>=10?"sb-hg":c.volOiRatio>=5?"sb-wl":"sb-boring";
+    const pFmt = c.premium?(c.premium>=1e6?`$${(c.premium/1e6).toFixed(1)}M`:`$${(c.premium/1e3).toFixed(0)}K`):"—";
+    return `<tr>
+      <td class="t-muted">${i+1}</td>
+      <td><div class="t-ticker">${c.underlying} $${c.strike}</div><div style="font-size:9px;color:var(--muted);font-family:var(--font-mono);">${c.expiration||""}</div></td>
+      <td><span style="color:${c.type==='call'?'var(--teal)':'var(--red)'};">${(c.type||"").toUpperCase()}</span></td>
+      <td class="t-muted">${c.dte??'—'}d</td>
+      <td class="t-num" style="color:var(--purple);font-weight:700;">${c.volOiRatio?.toFixed(1)||'—'}×</td>
+      <td class="t-num">${c.volume?.toLocaleString()||'—'}</td>
+      <td class="t-muted">${c.openInterest?.toLocaleString()||'—'}</td>
+      <td class="t-num" style="color:var(--teal);">${pFmt}</td>
+      <td class="t-muted">${c.otmPct!=null?(c.otmPct>0?'+':'')+c.otmPct.toFixed(1)+'%':'—'}</td>
+      <td style="color:${biasColor};">${bias}</td>
+      <td><span class="signal-badge ${sigClass}" style="font-size:9px;">${sig}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — NET IMPACT
+// ═══════════════════════════════════════════════════════════════════
+
+const INDUSTRY = {
+  META:"Internet Content",GOOGL:"Internet Content",SNAP:"Internet Content",
+  NVDA:"Semiconductors",AMD:"Semiconductors",MU:"Semiconductors",AVGO:"Semiconductors",
+  MSFT:"Software Infra",ORCL:"Software Infra",INTC:"Semiconductors",
+  TSLA:"Consumer Electronics",AAPL:"Consumer Electronics",
+  AMZN:"Internet Retail",QQQ:"ETF - Tech",SPY:"ETF - Broad",
+  HOOD:"Capital Markets",ONDS:"Medical Devices",KWEB:"ETF - China",
+};
+
+function renderNetImpact() {
+  document.getElementById("impact-empty").style.display = flowResults.length?"none":"flex";
+  document.getElementById("impact-content").style.display = flowResults.length?"block":"none";
+  if (!flowResults.length) return;
+
+  // By ticker
+  const byT = {};
+  flowResults.forEach(c => {
+    if (!c?.underlying) return;
+    if (!byT[c.underlying]) byT[c.underlying]={call:0,put:0};
+    if (c.type==="call") byT[c.underlying].call += c.premium||0;
+    else                 byT[c.underlying].put  += c.premium||0;
+  });
+  const tickerRows = Object.entries(byT).map(([t,d])=>{
+    const net=d.call-d.put, total=d.call+d.put;
+    const bullPct=total>0?(d.call/total)*100:50;
+    return {t,net,total,bullPct,d};
+  }).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+
+  const maxTotal = Math.max(...tickerRows.map(r=>r.total),1);
+  document.getElementById("impact-ticker-list").innerHTML = tickerRows.map(r=>{
+    const w = (r.total/maxTotal)*100;
+    const cW = (r.d.call/r.total)*100, pW = (r.d.put/r.total)*100;
+    const netFmt = `${r.net>=0?'+':''}$${(Math.abs(r.net)/1e6).toFixed(1)}M`;
+    return `<div class="impact-row">
+      <div class="ir-ticker">${r.t}</div>
+      <div class="ir-bar-wrap">
+        <div class="ir-call" style="width:${cW.toFixed(1)}%;"></div>
+        <div class="ir-put"  style="width:${pW.toFixed(1)}%;"></div>
+      </div>
+      <div class="ir-net" style="color:${r.net>=0?'var(--teal)':'var(--red)'};">${netFmt}</div>
+    </div>`;
+  }).join("");
+
+  // By industry
+  const byI = {};
+  tickerRows.forEach(r=>{
+    const ind = INDUSTRY[r.t]||"Other";
+    if (!byI[ind]) byI[ind]={call:0,put:0};
+    byI[ind].call+=r.d.call; byI[ind].put+=r.d.put;
+  });
+  const indRows = Object.entries(byI).map(([ind,d])=>{
+    const net=d.call-d.put, total=d.call+d.put;
+    const bullPct=total>0?(d.call/total)*100:50;
+    return {ind,net,total,bullPct};
+  }).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+
+  document.getElementById("impact-industry-list").innerHTML = indRows.map(r=>{
+    const netFmt=`${r.net>=0?'+':''}$${(Math.abs(r.net)/1e6).toFixed(1)}M`;
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+        <span style="font-weight:600;">${r.ind}</span>
+        <span style="font-family:var(--font-mono);color:${r.net>=0?'var(--teal)':'var(--red)'};">${netFmt}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="bar-track" style="flex:1;"><div class="bar-fill" style="width:${r.bullPct.toFixed(1)}%;background:${r.net>=0?'var(--teal)':'var(--red)'};"></div></div>
+        <span style="font-size:9px;font-family:var(--font-mono);color:var(--muted);">${r.bullPct.toFixed(0)}% bull</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER — CONTRACT DRILLDOWN
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadDrilldown() {
+  const underlying = document.getElementById("dd-underlying").value.trim().toUpperCase();
+  const strike     = document.getElementById("dd-strike").value.trim();
+  const type       = document.getElementById("dd-type").value;
+  const expiry     = document.getElementById("dd-expiry").value.trim();
+
+  if (!underlying||!strike||!expiry) { showToast("Fill in underlying, strike, and expiry","err"); return; }
+  if (!API_KEY) { showToast("Connect your API key first","err"); return; }
+
+  // Build Massive options ticker format: O:META240605C00612500
+  const dateStr  = expiry.replace(/-/g,"").slice(2); // YYMMDD
+  const strikeStr= String(Math.round(parseFloat(strike)*1000)).padStart(8,"0");
+  const optTicker= `O:${underlying}${dateStr}${type==="call"?"C":"P"}${strikeStr}`;
+
+  document.getElementById("dd-empty").style.display = "none";
+  document.getElementById("dd-content").style.display = "block";
+  document.getElementById("dd-chart-title").textContent = optTicker;
+
+  try {
+    const [snap, bars] = await Promise.all([
+      getContractSnapshot(underlying, optTicker).catch(()=>null),
+      getOptionsBars(optTicker).catch(()=>[]),
+    ]);
+
+    // Metrics
+    const m = snap||{};
+    document.getElementById("dd-metrics").innerHTML = `
+      <div class="metric"><div class="metric-label">Last price</div><div class="metric-value" style="color:var(--teal);">$${m.lastPrice?.toFixed(2)||'—'}</div></div>
+      <div class="metric"><div class="metric-label">Volume</div><div class="metric-value">${m.volume?.toLocaleString()||'—'}</div></div>
+      <div class="metric"><div class="metric-label">Open interest</div><div class="metric-value">${m.openInterest?.toLocaleString()||'—'}</div></div>
+      <div class="metric ${m.volOiRatio>=3?'highlight':''}"><div class="metric-label">Vol/OI</div><div class="metric-value" style="color:${m.volOiRatio>=3?'var(--teal)':'var(--text)'};">${m.volOiRatio?.toFixed(2)||'—'}×</div></div>
+      <div class="metric"><div class="metric-label">Premium</div><div class="metric-value" style="color:var(--teal);">${m.premium?(m.premium>=1e6?'$'+(m.premium/1e6).toFixed(2)+'M':'$'+(m.premium/1e3).toFixed(0)+'K'):'—'}</div></div>
+      <div class="metric"><div class="metric-label">OTM%</div><div class="metric-value">${m.otmPct!=null?(m.otmPct>0?'+':'')+m.otmPct.toFixed(1)+'%':'—'}</div></div>
+      <div class="metric"><div class="metric-label">IV</div><div class="metric-value">${m.iv?(m.iv*100).toFixed(1)+'%':'—'}</div></div>
+      <div class="metric"><div class="metric-label">DTE</div><div class="metric-value">${m.dte??'—'}d</div></div>
+    `;
+
+    // Greeks
+    document.getElementById("dd-greeks").innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;font-family:var(--font-mono);">
+        <div style="padding:8px;background:var(--bg);border-radius:6px;"><div style="color:var(--muted);margin-bottom:2px;">Delta</div><div style="font-weight:700;">${m.delta?.toFixed(4)||'—'}</div></div>
+        <div style="padding:8px;background:var(--bg);border-radius:6px;"><div style="color:var(--muted);margin-bottom:2px;">Gamma</div><div style="font-weight:700;">${m.gamma?.toFixed(4)||'—'}</div></div>
+        <div style="padding:8px;background:var(--bg);border-radius:6px;"><div style="color:var(--muted);margin-bottom:2px;">Theta</div><div style="font-weight:700;color:var(--red);">${m.theta?.toFixed(4)||'—'}</div></div>
+        <div style="padding:8px;background:var(--bg);border-radius:6px;"><div style="color:var(--muted);margin-bottom:2px;">Vega</div><div style="font-weight:700;">${m.vega?.toFixed(4)||'—'}</div></div>
+        <div style="padding:8px;background:var(--bg);border-radius:6px;"><div style="color:var(--muted);margin-bottom:2px;">Bid</div><div style="font-weight:700;">${m.bid?.toFixed(2)||'—'}</div></div>
+        <div style="padding:8px;background:var(--bg);border-radius:6px;"><div style="color:var(--muted);margin-bottom:2px;">Ask</div><div style="font-weight:700;">${m.ask?.toFixed(2)||'—'}</div></div>
+      </div>
+    `;
+
+    // Bias approximation from bars
+    if (bars.length) {
+      let ask=0,bid=0,mid=0;
+      bars.forEach(b=>{const m=(b.h+b.l)/2;if(b.c>m)ask++;else if(b.c<m)bid++;else mid++;});
+      const tot=ask+bid+mid||1;
+      document.getElementById("dd-bias").innerHTML = `
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Approximated from ${bars.length} 5-min bars</div>
+        <div class="bar-row"><div class="bar-label"><span style="color:var(--teal);">Ask side</span><span>${((ask/tot)*100).toFixed(1)}%</span></div><div class="bar-track"><div class="bar-fill" style="width:${(ask/tot)*100}%;background:var(--teal);"></div></div></div>
+        <div class="bar-row"><div class="bar-label"><span>Mid</span><span>${((mid/tot)*100).toFixed(1)}%</span></div><div class="bar-track"><div class="bar-fill" style="width:${(mid/tot)*100}%;background:var(--muted);"></div></div></div>
+        <div class="bar-row"><div class="bar-label"><span style="color:var(--red);">Bid side</span><span>${((bid/tot)*100).toFixed(1)}%</span></div><div class="bar-track"><div class="bar-fill" style="width:${(bid/tot)*100}%;background:var(--red);"></div></div></div>
+        <div style="margin-top:10px;font-size:10px;color:var(--dim);">Exact Bid/Ask/Mid split requires Trades endpoint (Developer plan)</div>
+      `;
+    }
+
+    // 5-min chart
+    if (bars.length) {
+      document.getElementById("dd-chart-sub").textContent = `${bars.length} bars · ${new Date(bars[0].t).toLocaleTimeString()} – ${new Date(bars[bars.length-1].t).toLocaleTimeString()}`;
+      buildBarChart(bars);
+    }
+
+    showToast("Contract loaded", "ok");
+  } catch(e) { showToast("Error: "+e.message,"err"); }
+}
+
+function buildBarChart(bars) {
+  if (chartInstance) { chartInstance.destroy(); chartInstance=null; }
+  const ctx = document.getElementById("dd-chart");
+  chartInstance = new Chart(ctx, {
+    type:"bar",
+    data:{
+      labels: bars.map(b=>new Date(b.t).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})),
+      datasets:[
+        { type:"line", label:"VWAP", data:bars.map(b=>b.vwap), borderColor:"rgba(15,212,160,0.8)", borderWidth:1.5, pointRadius:0, tension:0.2, yAxisID:"y" },
+        { label:"Volume", data:bars.map(b=>b.v), backgroundColor:"rgba(59,130,246,0.35)", yAxisID:"y2" },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{mode:"index",intersect:false}},
+      scales:{
+        x:{ticks:{color:"#475569",font:{size:9},maxTicksLimit:12},grid:{color:"rgba(255,255,255,0.04)"}},
+        y:{ticks:{color:"#475569",font:{size:9}},grid:{color:"rgba(255,255,255,0.04)"},position:"right"},
+        y2:{ticks:{display:false},grid:{display:false},position:"left"},
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════════════════════════
+
+function toggleWebSocket() {
+  if (ws && ws.readyState===WebSocket.OPEN) {
+    ws.close(); ws=null;
+    document.getElementById("ws-btn").textContent = "Connect Live WebSocket";
+    document.getElementById("ws-pill").style.display = "none";
+    return;
+  }
+  const tickers = document.getElementById("watchlist-input").value.split(",").map(t=>t.trim().toUpperCase()).filter(Boolean);
+  document.getElementById("ws-pill").style.display = "flex";
+  document.getElementById("ws-text").textContent = "WS connecting...";
+
+  try {
+    ws = new WebSocket(`${WS_BASE}?apiKey=${API_KEY}`);
+    ws.onopen = () => {
+      // Subscribe to all watchlist tickers
+      ws.send(JSON.stringify({ action:"subscribe", params: tickers.map(t=>`A.${t}`).join(",") }));
+      document.getElementById("ws-dot").className = "status-dot live";
+      document.getElementById("ws-text").textContent = `Live · ${tickers.length} tickers`;
+      document.getElementById("ws-btn").textContent = "Disconnect WebSocket";
+      showToast("WebSocket connected — live data streaming","ok");
+    };
+    ws.onmessage = (evt) => {
+      try {
+        const msgs = JSON.parse(evt.data);
+        msgs.forEach(msg => {
+          if (msg.ev === "A") handleLiveTick(msg);
+          if (msg.ev === "status") console.log("WS status:", msg.message);
+        });
+      } catch(e) {}
+    };
+    ws.onclose = () => {
+      document.getElementById("ws-dot").className = "status-dot";
+      document.getElementById("ws-text").textContent = "WS disconnected";
+      document.getElementById("ws-btn").textContent = "Reconnect WebSocket";
+    };
+    ws.onerror = () => {
+      document.getElementById("ws-dot").className = "status-dot error";
+      document.getElementById("ws-text").textContent = "WS error";
+      showToast("WebSocket error — check API key and plan","err");
+    };
+  } catch(e) { showToast("WebSocket failed: "+e.message,"err"); }
+}
+
+function handleLiveTick(msg) {
+  // msg: { ev:"A", sym:"MSFT", o,h,l,c,v,av,op,vw,s,e }
+  const ticker = msg.sym;
+  const tape = document.getElementById("tape");
+  // Update tape
+  let item = tape.querySelector(`[data-ticker="${ticker}"]`);
+  if (!item) {
+    item = document.createElement("div");
+    item.className = "tape-item";
+    item.dataset.ticker = ticker;
+    tape.appendChild(item);
+  }
+  const prev = parseFloat(item.dataset.prev||msg.c);
+  const chg = msg.c - prev;
+  item.dataset.prev = msg.c;
+  item.innerHTML = `<span>${ticker}</span><span class="tape-price">$${msg.c.toFixed(2)}</span><span class="tape-chg ${chg>=0?'up':'dn'}">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
+
+  // Live update ADR current price
+  if (scanResults[ticker]) {
+    scanResults[ticker].intra.currentPrice = msg.c;
+    if (msg.h) scanResults[ticker].intra.todayHigh = Math.max(scanResults[ticker].intra.todayHigh||0, msg.h);
+    if (msg.l) scanResults[ticker].intra.todayLow  = Math.min(scanResults[ticker].intra.todayLow||Infinity, msg.l);
+    // Recompute compression live
+    const { adrPct } = scanResults[ticker];
+    const comp = computeCompression(scanResults[ticker].intra, adrPct);
+    scanResults[ticker].compression = comp;
+    const scored = scoreAndClassify(adrPct, comp.compressionRatio||0.5);
+    scanResults[ticker].scored = scored;
+    // Refresh display if this is the active ticker
+    if (currentTicker===ticker) renderADRDetail(ticker);
+    // Refresh watchlist scores
+    const tickers = Object.keys(scanResults);
+    renderWatchlist(tickers);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════════════════════════════════
+
+function switchTab(name) {
+  ["adr","flow","impact","drilldown"].forEach(t => {
+    document.getElementById(`tab-${t}`).style.display = t===name?"block":"none";
+  });
+  document.querySelectorAll(".tab").forEach((el,i) => {
+    const tabs=["adr","flow","impact","drilldown"];
+    el.classList.toggle("active", tabs[i]===name);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════════
+
+function setStatus(state, text) {
+  const dot  = document.getElementById("status-dot");
+  const span = document.getElementById("status-text");
+  dot.className = "status-dot " + (state==="live"?"live":state==="loading"?"loading":state==="error"?"error":"");
+  span.textContent = text;
+}
+
+function showToast(msg, type="ok") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(()=>t.classList.remove("show"), 3500);
+}
+</script>
+</body>
+</html>
