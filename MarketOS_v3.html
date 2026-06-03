@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market OS</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b0f; --s1:#0e1319; --s2:#141c24; --s3:#1b2535;
+  --b0:rgba(255,255,255,.06); --b1:rgba(255,255,255,.12);
+  --tx:#d4dce8; --tx2:#7a8899; --tx3:#3d4f63;
+  --g:#00e5a0; --g2:rgba(0,229,160,.1); --g3:rgba(0,229,160,.04);
+  --b:#4d9fff; --b2:rgba(77,159,255,.1);
+  --y:#f0b429; --y2:rgba(240,180,41,.1);
+  --r:#ff5757; --r2:rgba(255,87,87,.1);
+  --p:#b892ff; --p2:rgba(184,146,255,.1);
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Inter',sans-serif;
+  --rad:6px; --rad2:10px; --rad3:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:13px;height:100%;overflow:hidden;}
+::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--s3);border-radius:3px;}
+
+/* ─── SHELL ───────────────────────────────── */
+.shell{height:100vh;display:grid;grid-template-rows:52px 1fr;}
+.top{background:var(--s1);border-bottom:1px solid var(--b0);display:flex;align-items:center;padding:0 18px;gap:12px;}
+.logo{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--g);letter-spacing:.03em;white-space:nowrap;}
+.logo em{color:var(--tx2);font-style:normal;}
+.v-sep{width:1px;height:20px;background:var(--b1);flex-shrink:0;}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--b0);font-size:11px;font-family:var(--mono);color:var(--tx2);}
+.led{width:6px;height:6px;border-radius:50%;background:var(--tx3);flex-shrink:0;}
+.led.on{background:var(--g);box-shadow:0 0 6px var(--g);}
+.led.pulse{background:var(--y);animation:pulse .9s infinite;}
+.led.err{background:var(--r);}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.rate-wrap{display:flex;flex-direction:column;gap:2px;align-items:flex-end;}
+.rate-lbl{font-size:9px;color:var(--tx3);font-family:var(--mono);}
+.rate-track{width:72px;height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
+.rate-fill{height:3px;border-radius:2px;background:var(--g);transition:width .4s,background .3s;}
+.clock{font-size:11px;font-family:var(--mono);color:var(--tx3);}
+
+/* ─── BODY ────────────────────────────────── */
+.body{display:grid;grid-template-columns:260px 1fr;overflow:hidden;}
+
+/* ─── SIDEBAR ─────────────────────────────── */
+.sb{background:var(--s1);border-right:1px solid var(--b0);display:flex;flex-direction:column;overflow:hidden;}
+.sb-head{padding:14px;border-bottom:1px solid var(--b0);flex-shrink:0;}
+.sb-scroll{flex:1;overflow-y:auto;padding:10px;}
+
+/* API SETUP CARD */
+.setup-card{background:var(--s2);border:1px solid var(--b0);border-radius:var(--rad2);padding:12px;margin-bottom:10px;}
+.setup-title{font-size:10px;font-weight:600;color:var(--tx3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:10px;}
+
+.fld{margin-bottom:8px;}
+.fld label{font-size:10px;color:var(--tx3);font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:3px;}
+input,select{background:var(--bg);border:1px solid var(--b1);border-radius:var(--rad);color:var(--tx);font-family:var(--mono);font-size:11px;padding:7px 9px;width:100%;outline:none;transition:border-color .15s;}
+input:focus,select:focus{border-color:var(--g);}
+input[type=password]{letter-spacing:.1em;}
+input.ok{border-color:rgba(0,229,160,.4);}
+input.bad{border-color:rgba(255,87,87,.4);}
+
+.big-btn{display:flex;align-items:center;justify-content:center;gap:7px;background:var(--g);border:none;border-radius:var(--rad);color:#03200f;font-family:var(--sans);font-weight:600;font-size:13px;padding:9px;cursor:pointer;width:100%;margin-top:8px;transition:opacity .15s,transform .1s;}
+.big-btn:hover{opacity:.88;}
+.big-btn:active{transform:scale(.98);}
+.big-btn:disabled{opacity:.35;cursor:not-allowed;}
+.big-btn.ghost{background:transparent;border:1px solid var(--b1);color:var(--tx2);}
+.big-btn.ghost:hover{border-color:var(--g);color:var(--g);}
+
+/* SYMBOL STACK */
+.sym-stack-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.sym-stack-lbl{font-size:10px;font-weight:600;color:var(--tx3);letter-spacing:.06em;text-transform:uppercase;}
+.sym-stack-clear{font-size:10px;color:var(--tx3);cursor:pointer;font-family:var(--mono);}
+.sym-stack-clear:hover{color:var(--r);}
+
+.sym-card{background:var(--s2);border:1px solid var(--b0);border-radius:var(--rad);padding:9px 11px;margin-bottom:4px;cursor:pointer;transition:all .12s;display:flex;align-items:center;justify-content:space-between;}
+.sym-card:hover{background:var(--s3);}
+.sym-card.active{background:var(--g3);border-color:rgba(0,229,160,.25);}
+.sym-left{display:flex;flex-direction:column;gap:2px;}
+.sym-name{font-family:var(--mono);font-weight:600;font-size:13px;}
+.sym-sub{font-size:10px;color:var(--tx3);}
+.sym-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+.sym-score{font-family:var(--mono);font-weight:600;font-size:14px;}
+.sym-tag{font-size:9px;font-family:var(--mono);padding:2px 5px;border-radius:3px;font-weight:600;}
+.t-hg{background:var(--p2);color:var(--p);}
+.t-wl{background:var(--b2);color:var(--b);}
+.t-ex{background:var(--r2);color:var(--r);}
+.t-bo{background:var(--s3);color:var(--tx3);}
+.t-ok{background:var(--g2);color:var(--g);}
+
+/* ─── MAIN ────────────────────────────────── */
+.main{display:flex;flex-direction:column;overflow:hidden;}
+.ticker-tape{height:28px;background:var(--s2);border-bottom:1px solid var(--b0);display:flex;align-items:center;padding:0 14px;gap:16px;overflow:hidden;font-size:10px;font-family:var(--mono);color:var(--tx3);flex-shrink:0;}
+.tape-item{display:flex;align-items:center;gap:5px;white-space:nowrap;}
+
+/* SEARCH BAR */
+.search-bar{padding:10px 14px;border-bottom:1px solid var(--b0);background:var(--s1);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.search-input-wrap{position:relative;flex:1;}
+.search-input-wrap input{padding-left:32px;font-size:13px;}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--tx3);font-size:14px;pointer-events:none;}
+.fetch-btn{background:var(--g);border:none;border-radius:var(--rad);color:#03200f;font-family:var(--sans);font-weight:600;font-size:12px;padding:7px 16px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.fetch-btn:hover{opacity:.85;}
+.fetch-btn:disabled{opacity:.4;cursor:not-allowed;}
+.search-hint{font-size:11px;color:var(--tx3);white-space:nowrap;}
+
+/* TABS */
+.tabs{display:flex;gap:1px;padding:8px 14px;border-bottom:1px solid var(--b0);background:var(--s1);flex-shrink:0;}
+.tab{padding:6px 14px;border-radius:var(--rad);font-size:12px;font-weight:500;cursor:pointer;color:var(--tx2);border:1px solid transparent;transition:all .12s;}
+.tab.on{background:var(--s2);color:var(--tx);border-color:var(--b1);}
+.tab:hover:not(.on){color:var(--tx);}
+
+/* PANEL */
+.panel{flex:1;overflow-y:auto;padding:16px;}
+
+/* ─── COMPONENTS ──────────────────────────── */
+.card{background:var(--s2);border:1px solid var(--b0);border-radius:var(--rad2);padding:14px 16px;margin-bottom:12px;}
+.card.hi-g{border-color:rgba(0,229,160,.3);}
+.card.hi-p{border-color:rgba(184,146,255,.3);}
+.card.hi-y{border-color:rgba(240,180,41,.3);}
+.card.hi-r{border-color:rgba(255,87,87,.3);}
+.card-hd{font-size:10px;font-weight:600;color:var(--tx3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+
+.mg{display:grid;gap:8px;margin-bottom:12px;}
+.mg-2{grid-template-columns:1fr 1fr;}
+.mg-3{grid-template-columns:repeat(3,1fr);}
+.mg-4{grid-template-columns:repeat(4,1fr);}
+.mg-5{grid-template-columns:repeat(5,1fr);}
+.mb{background:var(--s3);border-radius:var(--rad);padding:10px 12px;}
+.mb-l{font-size:10px;color:var(--tx3);font-family:var(--mono);margin-bottom:3px;}
+.mb-v{font-size:18px;font-weight:600;font-family:var(--mono);line-height:1;}
+.mb-s{font-size:10px;color:var(--tx3);margin-top:3px;}
+
+.up{color:var(--g)!important;} .dn{color:var(--r)!important;}
+.yw{color:var(--y)!important;} .pu{color:var(--p)!important;} .bl{color:var(--b)!important;}
+
+.srow{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;}
+.srow:last-child{border:none;}
+.slab{color:var(--tx2);}
+.sval{font-family:var(--mono);font-weight:600;}
+
+.br-row{margin-bottom:7px;}
+.br-hd{display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);font-family:var(--mono);margin-bottom:3px;}
+.br-track{background:var(--s3);border-radius:2px;height:4px;overflow:hidden;}
+.br-fill{height:4px;border-radius:2px;transition:width .5s;}
+
+.ring-row{display:flex;align-items:center;gap:14px;margin-bottom:12px;}
+.ring{width:78px;height:78px;border-radius:50%;border:2px solid var(--b1);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;transition:border-color .3s;}
+.ring-n{font-size:24px;font-weight:600;font-family:var(--mono);}
+.ring-l{font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;}
+.ring-info{flex:1;}
+.ring-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+.ring-desc{font-size:11px;color:var(--tx2);line-height:1.6;}
+
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+
+.ft{width:100%;border-collapse:collapse;font-size:11px;}
+.ft th{font-size:10px;color:var(--tx3);font-family:var(--mono);font-weight:600;padding:5px 8px 5px 0;border-bottom:1px solid var(--b0);text-align:left;white-space:nowrap;}
+.ft td{padding:7px 8px 7px 0;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+.ft tr:last-child td{border:none;}
+.ft tr:hover td{background:rgba(255,255,255,.02);}
+.ftk{font-family:var(--mono);font-weight:600;}
+
+.ibar{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;}
+.ibar:last-child{border:none;}
+.ibar-t{width:46px;font-family:var(--mono);font-weight:600;flex-shrink:0;}
+.ibar-track{flex:1;display:flex;gap:2px;align-items:center;}
+.ibar-c{height:4px;border-radius:2px;background:var(--g);}
+.ibar-p{height:4px;border-radius:2px;background:var(--r);}
+.ibar-n{width:54px;text-align:right;font-family:var(--mono);font-size:10px;flex-shrink:0;}
+
+.gex-map{position:relative;height:160px;background:var(--s3);border-radius:var(--rad);overflow:hidden;margin:10px 0;}
+.gx-z{position:absolute;left:0;right:0;}
+.gx-l{position:absolute;left:0;right:0;height:1px;}
+.gx-lbl{position:absolute;right:8px;font-size:10px;font-family:var(--mono);font-weight:600;transform:translateY(-50%);}
+.gx-arrow{position:absolute;left:50%;transform:translateX(-50%);font-size:14px;transition:top .3s;}
+
+.bdg{display:inline-block;font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 6px;border-radius:3px;}
+.bg{background:var(--g2);color:var(--g);}
+.bb{background:var(--b2);color:var(--b);}
+.by{background:var(--y2);color:var(--y);}
+.br2{background:var(--r2);color:var(--r);}
+.bpu{background:var(--p2);color:var(--p);}
+.bm{background:var(--s3);color:var(--tx3);}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:280px;color:var(--tx3);gap:8px;text-align:center;padding:20px;}
+.empty-ico{font-size:32px;opacity:.2;}
+.empty-t{font-size:14px;font-weight:500;color:var(--tx2);}
+.empty-s{font-size:12px;max-width:280px;line-height:1.6;}
+
+.err-box{background:var(--r2);border:1px solid rgba(255,87,87,.3);border-radius:var(--rad);padding:9px 12px;font-size:11px;font-family:var(--mono);color:var(--r);margin-bottom:10px;}
+.warn-box{background:var(--y2);border:1px solid rgba(240,180,41,.3);border-radius:var(--rad);padding:9px 12px;font-size:11px;color:var(--y);margin-bottom:10px;line-height:1.5;}
+
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--b0);border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+#toast{position:fixed;bottom:20px;right:20px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rad2);padding:10px 14px;font-size:11px;font-family:var(--mono);z-index:999;transform:translateY(56px);transition:transform .22s;max-width:290px;}
+#toast.show{transform:translateY(0);}
+#toast.ok{border-color:rgba(0,229,160,.5);color:var(--g);}
+#toast.err{border-color:rgba(255,87,87,.5);color:var(--r);}
+#toast.warn{border-color:rgba(240,180,41,.4);color:var(--y);}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- TOP BAR -->
+<div class="top">
+  <div class="logo">MARKET<em>OS</em></div>
+  <div class="v-sep"></div>
+  <div class="pill"><div class="led" id="mkt-led"></div><span id="mkt-txt">—</span></div>
+  <div class="pill"><div class="led" id="api-led"></div><span id="api-txt">Not connected</span></div>
+  <div class="pill" id="ws-pill" style="display:none;"><div class="led pulse" id="ws-led"></div><span id="ws-txt">WS—</span></div>
+  <div class="top-right">
+    <div class="rate-wrap">
+      <div class="rate-lbl">API rate</div>
+      <div class="rate-track"><div class="rate-fill" id="rate-fill" style="width:0%;"></div></div>
+    </div>
+    <div class="clock" id="clock"></div>
+  </div>
+</div>
+
+<!-- BODY -->
+<div class="body">
+
+<!-- SIDEBAR -->
+<aside class="sb">
+  <div class="sb-head">
+
+    <!-- API KEY -->
+    <div class="setup-card">
+      <div class="setup-title">Massive API</div>
+      <div class="fld">
+        <label>API Key</label>
+        <input type="password" id="api-key" placeholder="paste key…" oninput="onKeyInput()">
+      </div>
+      <div class="fld">
+        <label>ADR lookback (days)</label>
+        <input type="number" id="adr-days" value="20" min="5" max="50" style="width:80px;">
+      </div>
+      <button class="big-btn ghost" id="ws-btn" style="display:none;" onclick="toggleWS()">Connect WebSocket</button>
+    </div>
+
+    <!-- SYMBOL SEARCH -->
+    <div class="fld" style="margin-bottom:4px;">
+      <label>Add symbol</label>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="sym-input" placeholder="e.g. XLE" style="text-transform:uppercase;flex:1;" onkeydown="if(event.key==='Enter')addSymbol()">
+        <button class="fetch-btn" onclick="addSymbol()" id="add-btn">Add</button>
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--tx3);font-family:var(--mono);margin-bottom:4px;" id="add-status"></div>
+
+  </div>
+  <div class="sb-scroll">
+    <div class="sym-stack-head">
+      <div class="sym-stack-lbl">Loaded symbols</div>
+      <div class="sym-stack-clear" onclick="clearAll()">clear all</div>
+    </div>
+    <div id="sym-list"><div class="empty" style="min-height:120px;"><div class="empty-ico">⊕</div><div class="empty-s">Type a symbol above and click Add</div></div></div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- TAPE -->
+  <div class="ticker-tape" id="tape"><span>WebSocket tape — connect after adding symbols</span></div>
+
+  <!-- SEARCH BAR (active symbol lookup) -->
+  <div class="search-bar">
+    <div class="search-input-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="drill-sym" placeholder="Enter symbol to fetch — e.g. XLE" style="padding-left:32px;font-size:13px;" onkeydown="if(event.key==='Enter')fetchSymbol()">
+    </div>
+    <button class="fetch-btn" id="fetch-btn" onclick="fetchSymbol()">Fetch data</button>
+    <span class="search-hint" id="fetch-hint">No symbol loaded</span>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab on" onclick="switchTab('adr')">ADR Coil</div>
+    <div class="tab" onclick="switchTab('gex')">GEXEdge</div>
+    <div class="tab" onclick="switchTab('flow')">Flow / InstMap</div>
+    <div class="tab" onclick="switchTab('drill')">Contract drill</div>
+  </div>
+
+  <!-- ── ADR PANEL ─────────────────────── -->
+  <div class="panel" id="pan-adr">
+    <div id="adr-empty" class="empty">
+      <div class="empty-ico">◎</div>
+      <div class="empty-t">ADR Coil Engine</div>
+      <div class="empty-s">Type a symbol in the bar above and click Fetch. Each symbol loads independently — no bulk calls.</div>
+    </div>
+    <div id="adr-data" style="display:none;">
+      <div class="ring-row">
+        <div class="ring" id="adr-ring"><div class="ring-n" id="adr-score">—</div><div class="ring-l">score</div></div>
+        <div class="ring-info"><div class="ring-title" id="adr-title">—</div><div class="ring-desc" id="adr-desc">—</div></div>
+      </div>
+      <div class="mg mg-5" id="adr-metrics"></div>
+      <div class="card" style="margin-bottom:12px;"><div class="card-hd">Score breakdown</div><div id="adr-breakdown"></div></div>
+      <div class="card"><div class="card-hd">Symbol history <span id="adr-history-lbl" style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;"></span></div>
+        <table class="ft"><thead><tr><th>Symbol</th><th>ADR%</th><th>Today%</th><th>Ratio</th><th>Exp $</th><th>Price</th><th>Score</th><th>Signal</th></tr></thead>
+        <tbody id="adr-history"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── GEX PANEL ─────────────────────── -->
+  <div class="panel" id="pan-gex" style="display:none;">
+    <div class="warn-box">GEXEdge levels are manual — paste from your GEXEdge dashboard. Active symbol price auto-populates from last fetch.</div>
+    <div class="g2" style="margin-bottom:12px;">
+      <div class="card hi-y">
+        <div class="card-hd">Level inputs — <span id="gex-sym-lbl" style="color:var(--g);font-weight:600;text-transform:none;letter-spacing:0;font-size:11px;">no symbol loaded</span></div>
+        <div class="g2" style="margin-bottom:8px;">
+          <div class="fld" style="margin:0;"><label>Call wall $</label><input type="number" id="g-cw" placeholder="e.g. 60" step=".5" oninput="drawGEX()"></div>
+          <div class="fld" style="margin:0;"><label>Put wall $</label><input type="number" id="g-pw" placeholder="e.g. 56" step=".5" oninput="drawGEX()"></div>
+          <div class="fld" style="margin:0;"><label>Gamma flip $</label><input type="number" id="g-fl" placeholder="e.g. 58" step=".5" oninput="drawGEX()"></div>
+          <div class="fld" style="margin:0;"><label>Pin / VWAP $</label><input type="number" id="g-pi" placeholder="e.g. 58.5" step=".5" oninput="drawGEX()"></div>
+        </div>
+        <div class="fld" style="margin-bottom:0;"><label>Regime</label>
+          <select id="g-reg" onchange="drawGEX()">
+            <option value="pos">Positive GEX — above flip</option>
+            <option value="flip">Flip zone — at flip</option>
+            <option value="neg">Negative GEX — below flip</option>
+            <option value="vwap">VWAP confluence</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd">Price vs levels</div>
+        <div class="gex-map" id="gex-map"></div>
+        <div class="mg mg-2" style="margin-bottom:0;">
+          <div class="mb"><div class="mb-l">vs call wall</div><div class="mb-v" id="gv-cw">—</div></div>
+          <div class="mb"><div class="mb-l">vs put wall</div><div class="mb-v" id="gv-pw">—</div></div>
+          <div class="mb"><div class="mb-l">vs flip</div><div class="mb-v" id="gv-fl">—</div></div>
+          <div class="mb"><div class="mb-l">vs pin</div><div class="mb-v" id="gv-pi">—</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card"><div class="card-hd">Regime — expected behavior</div><div id="gex-regime-out"></div></div>
+    <div class="card"><div class="card-hd">Active trade setups</div><div id="gex-setups-out"></div></div>
+  </div>
+
+  <!-- ── FLOW PANEL ─────────────────────── -->
+  <div class="panel" id="pan-flow" style="display:none;">
+    <div id="flow-empty" class="empty">
+      <div class="empty-ico">⬡</div>
+      <div class="empty-t">Flow / InstMap</div>
+      <div class="empty-s">Fetch a symbol to see call vs put premium, Vol/OI unusual contracts, and net flow.</div>
+    </div>
+    <div id="flow-data" style="display:none;">
+      <div class="g2" style="margin-bottom:12px;">
+        <div class="card"><div class="card-hd">Net impact — call − put premium</div><div id="flow-net"></div></div>
+        <div class="card"><div class="card-hd">Unusual Vol/OI <span class="bdg bm">≥ 3× ratio</span></div>
+          <table class="ft"><thead><tr><th>Strike</th><th>Type</th><th>DTE</th><th>Vol/OI</th><th>Prem</th><th>IV</th><th>Bias</th></tr></thead>
+          <tbody id="flow-unusual"></tbody></table>
+        </div>
+      </div>
+      <div class="card"><div class="card-hd">Full chain summary — <span id="flow-chain-lbl" style="color:var(--tx2);font-weight:400;text-transform:none;letter-spacing:0;"></span></div>
+        <div class="g2">
+          <div><div class="card-hd" style="margin-bottom:6px;">Calls — top by volume</div><table class="ft"><thead><tr><th>Strike</th><th>DTE</th><th>Volume</th><th>Vol/OI</th><th>IV</th><th>Delta</th></tr></thead><tbody id="flow-calls"></tbody></table></div>
+          <div><div class="card-hd" style="margin-bottom:6px;">Puts — top by volume</div><table class="ft"><thead><tr><th>Strike</th><th>DTE</th><th>Volume</th><th>Vol/OI</th><th>IV</th><th>Delta</th></tr></thead><tbody id="flow-puts"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DRILL PANEL ────────────────────── -->
+  <div class="panel" id="pan-drill" style="display:none;">
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-hd">Specific contract lookup</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:80px;"><label class="mb-l">Underlying</label><input type="text" id="dc-u" placeholder="XLE" oninput="this.value=this.value.toUpperCase();buildTickerLabel()"></div>
+        <div style="flex:1;min-width:60px;"><label class="mb-l">Strike $</label><input type="number" id="dc-k" placeholder="60" step=".5" oninput="buildTickerLabel()"></div>
+        <div style="width:80px;"><label class="mb-l">Type</label><select id="dc-t" onchange="buildTickerLabel()"><option>call</option><option>put</option></select></div>
+        <div style="flex:2;min-width:120px;"><label class="mb-l">Expiry YYYY-MM-DD</label><input type="text" id="dc-e" placeholder="2026-06-18" oninput="buildTickerLabel()"></div>
+        <button class="fetch-btn" style="flex-shrink:0;" onclick="drillFetch()">Load contract</button>
+      </div>
+      <div style="margin-top:7px;font-size:10px;color:var(--tx3);font-family:var(--mono);" id="dc-preview">—</div>
+    </div>
+
+    <div id="drill-empty" class="empty" style="min-height:200px;">
+      <div class="empty-ico">◎</div>
+      <div class="empty-t">Contract drilldown</div>
+      <div class="empty-s">Enter contract details above and click Load</div>
+    </div>
+    <div id="drill-data" style="display:none;">
+      <div id="drill-err" class="err-box" style="display:none;"></div>
+      <div class="mg mg-4" id="drill-metrics"></div>
+      <div class="g2" style="margin-bottom:12px;">
+        <div class="card"><div class="card-hd">Greeks + quote</div><div id="drill-greeks"></div></div>
+        <div class="card">
+          <div class="card-hd">Flow bias <span class="bdg bm">5-min bar approx</span></div>
+          <div id="drill-bias"></div>
+          <div style="margin-top:8px;font-size:10px;color:var(--tx3);line-height:1.5;">Exact Bid/Ask/Mid requires Developer plan Trades endpoint. This uses bar close vs midpoint approximation.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+          <div class="card-hd" style="margin:0;" id="drill-chart-lbl">5-min bars</div>
+          <div style="font-size:10px;color:var(--tx3);font-family:var(--mono);" id="drill-chart-sub"></div>
+        </div>
+        <div style="position:relative;height:210px;"><canvas id="drill-chart" role="img" aria-label="5-minute options bar chart with VWAP line">Chart</canvas></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /body -->
+</div><!-- /shell -->
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ══════════════════════════════════════════
+// RATE LIMITER — queue, 220ms between calls
+// ══════════════════════════════════════════
+const Q=[];let QR=false;
+const DELAY=220;
+let reqLog=[];
+
+function enqueue(fn){return new Promise((ok,err)=>{Q.push({fn,ok,err});if(!QR)drain();});}
+async function drain(){
+  QR=true;
+  while(Q.length){
+    const{fn,ok,err}=Q.shift();
+    try{
+      reqLog=reqLog.filter(t=>Date.now()-t<60000);
+      reqLog.push(Date.now());
+      const pct=Math.min(100,(reqLog.length/120)*100);
+      const fill=document.getElementById('rate-fill');
+      fill.style.width=pct+'%';
+      fill.style.background=pct>80?'var(--r)':pct>55?'var(--y)':'var(--g)';
+      ok(await fn());
+    }catch(e){err(e);}
+    if(Q.length)await sleep(DELAY);
+  }
+  QR=false;
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let KEY='',ws=null,wsSubbed=null;
+let symbols={};   // {sym: {adrPct,comp,scored,intra,chain,flow}}
+let activeSym=null;
+let drillChart=null;
+const $=id=>document.getElementById(id);
+
+// Clock
+setInterval(()=>{
+  const n=new Date();
+  $('clock').textContent=n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/New_York'})+' ET';
+},1000);
+
+function toast(msg,type='ok'){
+  const t=$('toast');t.textContent=msg;t.className='show '+type;
+  clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3400);
+}
+function setLed(id,txtId,st,txt){
+  $(id).className='led '+(st==='on'?'on':st==='pulse'?'pulse':st==='err'?'err':'');
+  $(txtId).textContent=txt;
+}
+function onKeyInput(){
+  const k=$('api-key').value.trim();
+  KEY=k;
+  $('api-key').className=k.length>10?'ok':'';
+  if(k.length>10){setLed('api-led','api-txt','on','Key set');$('ws-btn').style.display='block';}
+  else{setLed('api-led','api-txt','','Not connected');$('ws-btn').style.display='none';}
+}
+
+// ══════════════════════════════════════════
+// MASSIVE API
+// ══════════════════════════════════════════
+const BASE='https://api.massive.com';
+
+async function mget(path,params={}){
+  return enqueue(async()=>{
+    const url=new URL(BASE+path);
+    url.searchParams.set('apiKey',KEY);
+    Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,String(v)));
+    const r=await fetch(url.toString());
+    if(r.status===429)throw new Error('Rate limited (429) — slow down');
+    if(r.status===400)throw new Error('Bad request (400) — symbol may not support options');
+    if(r.status===403)throw new Error('Forbidden (403) — endpoint not in your plan');
+    if(!r.ok)throw new Error('HTTP '+r.status+' on '+path.split('?')[0]);
+    return r.json();
+  });
+}
+
+async function mgetR(path,params={},tries=2){
+  for(let i=0;i<=tries;i++){
+    try{return await mget(path,params);}
+    catch(e){
+      if(e.message.includes('429')&&i<tries){toast('Rate limit — retrying in 3s','warn');await sleep(3000);}
+      else throw e;
+    }
+  }
+}
+
+async function getMarketStatus(){
+  const j=await mgetR('/v1/marketstatus/now');
+  return j.market==='open';
+}
+async function getDailyBars(sym,days){
+  const to=new Date(),from=new Date();
+  from.setDate(from.getDate()-Math.ceil(days*1.5));
+  const f=d=>d.toISOString().slice(0,10);
+  const j=await mgetR(`/v2/aggs/ticker/${sym}/range/1/day/${f(from)}/${f(to)}`,{adjusted:'true',sort:'desc',limit:days+7});
+  return(j.results||[]).map(b=>({h:b.h,l:b.l,c:b.c,o:b.o,v:b.v,t:b.t}));
+}
+async function getIntraday(sym){
+  const today=new Date().toISOString().slice(0,10);
+  const j=await mgetR(`/v2/aggs/ticker/${sym}/range/1/minute/${today}/${today}`,{adjusted:'true',sort:'asc',limit:500});
+  const bars=j.results||[];
+  if(!bars.length)return{h:null,l:null,p:null};
+  return{h:Math.max(...bars.map(b=>b.h)),l:Math.min(...bars.map(b=>b.l)),p:bars[bars.length-1].c};
+}
+async function getChain(sym){
+  const ninety=new Date();ninety.setDate(ninety.getDate()+90);
+  const j=await mgetR(`/v3/snapshot/options/${sym}`,{
+    limit:250,sort:'volume',order:'desc',
+    expiration_date_lte:ninety.toISOString().slice(0,10),
+  });
+  return(j.results||[]).map(normSnap).filter(Boolean);
+}
+async function getSingleSnap(und,optTick){
+  const j=await mgetR(`/v3/snapshot/options/${und}/${optTick}`);
+  return normSnap(j.results);
+}
+async function getOptBars(optTick,mult=5){
+  const today=new Date().toISOString().slice(0,10);
+  const j=await mgetR(`/v2/aggs/ticker/${optTick}/range/${mult}/minute/${today}/${today}`,{adjusted:'true',sort:'asc',limit:390});
+  const bars=j.results||[];
+  let cV=0,cPV=0;
+  return bars.map(b=>{const tp=(b.h+b.l+b.c)/3;cV+=b.v;cPV+=tp*b.v;return{t:b.t,o:b.o,h:b.h,l:b.l,c:b.c,v:b.v,vw:cV?cPV/cV:null};});
+}
+
+function normSnap(r){
+  if(!r)return null;
+  const d=r.details||{},g=r.greeks||{},q=r.last_quote||{},tr=r.last_trade||{},u=r.underlying_asset||{},day=r.day||{};
+  const strike=d.strike_price,exp=d.expiration_date,up=u.price;
+  const last=tr.price||((q.ask&&q.bid)?(q.ask+q.bid)/2:null);
+  const dte=exp?Math.ceil((new Date(exp)-Date.now())/86400000):null;
+  const otm=(strike&&up&&d.contract_type==='call')?((strike-up)/up)*100:(strike&&up)?((up-strike)/up)*100:null;
+  const voi=(day.volume&&r.open_interest)?+(day.volume/r.open_interest).toFixed(2):null;
+  const prem=(last&&day.volume)?+(last*day.volume*100).toFixed(0):null;
+  return{
+    ticker:r.ticker,und:u.ticker||d.underlying_ticker,type:d.contract_type,
+    strike,exp,dte,otm:otm!=null?+otm.toFixed(2):null,voi,prem,
+    last,bid:q.bid,ask:q.ask,mid:(q.bid&&q.ask)?+((q.bid+q.ask)/2).toFixed(4):null,
+    vol:day.volume,oi:r.open_interest,
+    delta:g.delta,gamma:g.gamma,theta:g.theta,vega:g.vega,iv:r.implied_volatility,
+    up,uchg:u.change_percent,
+    bias:last&&q.ask&&q.bid?(last>=q.ask?'ASK':last<=q.bid?'BID':'MID'):null,
+  };
+}
+
+// ══════════════════════════════════════════
+// ADR MATH
+// ══════════════════════════════════════════
+function calcADR(bars,n){
+  const s=bars.slice(0,n);if(s.length<3)return null;
+  const ranges=s.map(b=>+((b.h-b.l)/b.c*100).toFixed(4));
+  return{pct:+(ranges.reduce((a,r)=>a+r,0)/ranges.length).toFixed(4),n:s.length};
+}
+function calcComp(intra,pct){
+  if(!intra.p)return{today:null,ratio:null,left:null};
+  const today=+((intra.h-intra.l)/intra.p*100).toFixed(4);
+  const ratio=+(today/pct).toFixed(4);
+  const left=Math.max(0,(pct/100*intra.p)-(intra.h-intra.l));
+  return{today,ratio,left:+left.toFixed(4)};
+}
+function calcScore(pct,ratio=0.5){
+  const aS=Math.min(40,(pct/8)*40);
+  let cS=0;
+  if(ratio<=0.20)cS=30;else if(ratio<=0.35)cS=26;else if(ratio<=0.50)cS=20;
+  else if(ratio<=0.65)cS=12;else if(ratio<=0.80)cS=5;
+  const total=Math.min(100,+(aS+cS).toFixed(1));
+  let sig,lbl,col,cls;
+  if(pct>=4&&ratio<=0.35&&total>=76){sig='HOLY_GRAIL';lbl='Holy grail coil';col='var(--p)';cls='t-hg';}
+  else if(ratio>=0.80){sig='EXPANDED';lbl='Move expanded';col='var(--r)';cls='t-ex';}
+  else if(pct>=3&&ratio<=0.50){sig='WATCHLIST';lbl='Watchlist coil';col='var(--b)';cls='t-wl';}
+  else if(pct<2.5){sig='BORING';lbl='Too low ADR';col='var(--tx3)';cls='t-bo';}
+  else{sig='BORDERLINE';lbl='Borderline';col='var(--y)';cls='t-bo';}
+  return{total,aS:+aS.toFixed(1),cS,sig,lbl,col,cls};
+}
+
+// ══════════════════════════════════════════
+// FETCH SYMBOL (one at a time)
+// ══════════════════════════════════════════
+async function fetchSymbol(){
+  const sym=($('drill-sym').value||'').trim().toUpperCase();
+  if(!sym){toast('Enter a symbol first','err');return;}
+  if(!KEY){toast('Enter API key first','err');return;}
+
+  const days=parseInt($('adr-days').value)||20;
+  $('fetch-btn').disabled=true;$('fetch-btn').textContent='Loading…';
+  $('fetch-hint').textContent='Fetching '+sym+'…';
+  setLed('api-led','api-txt','pulse','Fetching '+sym+'…');
+
+  let data={sym};
+
+  // Step 1: market status (only on first fetch)
+  if(Object.keys(symbols).length===0){
+    try{const open=await getMarketStatus();setLed('mkt-led','mkt-txt',open?'on':'err',open?'Market open':'Market closed');}
+    catch(e){}
+  }
+
+  // Step 2: daily bars for ADR
+  try{
+    $('fetch-hint').textContent=sym+' — ADR daily bars…';
+    const daily=await getDailyBars(sym,days);
+    const intra=await getIntraday(sym);
+    const adr=calcADR(daily,days);
+    if(adr){
+      const comp=calcComp(intra,adr.pct);
+      const scored=calcScore(adr.pct,comp.ratio??0.5);
+      data={...data,adrPct:adr.pct,adrN:adr.n,comp,scored,intra};
+    }
+  }catch(e){toast(sym+' ADR: '+e.message,'warn');}
+
+  // Step 3: options chain
+  try{
+    $('fetch-hint').textContent=sym+' — options chain…';
+    const chain=await getChain(sym);
+    const calls=chain.filter(c=>c.type==='call');
+    const puts=chain.filter(c=>c.type==='put');
+    data.chain=chain;
+    data.callP=calls.reduce((s,c)=>s+(c.prem||0),0);
+    data.putP=puts.reduce((s,c)=>s+(c.prem||0),0);
+    data.unusual=chain.filter(c=>c.voi>=3&&c.vol>=100).sort((a,b)=>b.voi-a.voi).slice(0,8);
+    data.topCalls=calls.sort((a,b)=>(b.vol||0)-(a.vol||0)).slice(0,6);
+    data.topPuts=puts.sort((a,b)=>(b.vol||0)-(a.vol||0)).slice(0,6);
+  }catch(e){toast(sym+' chain: '+e.message,'warn');}
+
+  symbols[sym]=data;
+  activeSym=sym;
+
+  $('fetch-btn').disabled=false;$('fetch-btn').textContent='Fetch data';
+  $('fetch-hint').textContent='Loaded: '+sym;
+  setLed('api-led','api-txt','on','OK');
+
+  renderSymList();
+  renderADR();
+  renderFlow();
+  $('gex-sym-lbl').textContent=sym;
+  drawGEX();
+
+  // Subscribe WS to this symbol
+  if(ws&&ws.readyState===WebSocket.OPEN&&wsSubbed!==sym){
+    if(wsSubbed)ws.send(JSON.stringify({action:'unsubscribe',params:'AM.'+wsSubbed}));
+    ws.send(JSON.stringify({action:'subscribe',params:'AM.'+sym}));
+    wsSubbed=sym;
+  }
+  toast('Loaded: '+sym,'ok');
+}
+
+// Manual add from sidebar
+async function addSymbol(){
+  const sym=$('sym-input').value.trim().toUpperCase();
+  if(!sym)return;
+  if(!KEY){toast('Enter API key first','err');return;}
+  $('sym-input').value='';
+  $('drill-sym').value=sym;
+  await fetchSymbol();
+}
+
+function setActive(sym){
+  activeSym=sym;
+  $('drill-sym').value=sym;
+  $('fetch-hint').textContent='Loaded: '+sym;
+  $('gex-sym-lbl').textContent=sym;
+  renderADR();
+  renderFlow();
+  drawGEX();
+  document.querySelectorAll('.sym-card').forEach(el=>el.classList.toggle('active',el.dataset.sym===sym));
+}
+
+function clearAll(){symbols={};activeSym=null;renderSymList();renderADR();renderFlow();$('fetch-hint').textContent='No symbol loaded';toast('Cleared','ok');}
+
+// ══════════════════════════════════════════
+// RENDER — SYM LIST
+// ══════════════════════════════════════════
+function renderSymList(){
+  const syms=Object.keys(symbols);
+  if(!syms.length){
+    $('sym-list').innerHTML='<div class="empty" style="min-height:120px;"><div class="empty-ico">⊕</div><div class="empty-s">Type a symbol above and click Add</div></div>';
+    return;
+  }
+  $('sym-list').innerHTML=syms.map(s=>{
+    const d=symbols[s],sc=d.scored;
+    return`<div class="sym-card${s===activeSym?' active':''}" data-sym="${s}" onclick="setActive('${s}')">
+      <div class="sym-left">
+        <div class="sym-name">${s}</div>
+        <div class="sym-sub">${d.intra?.p?'$'+d.intra.p.toFixed(2):'—'} ${d.adrPct?'· ADR '+d.adrPct.toFixed(2)+'%':''}</div>
+      </div>
+      <div class="sym-right">
+        <div class="sym-score" style="color:${sc?.col||'var(--tx3)'};">${sc?Math.round(sc.total):'—'}</div>
+        <div class="sym-tag ${sc?.cls||'t-bo'}">${sc?.lbl||'no ADR'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// RENDER — ADR
+// ══════════════════════════════════════════
+const ADR_BODIES={
+  HOLY_GRAIL:'Maximum explosive setup. High ADR + ultra-tight compression. Enter on Stealth Strike delta 0.05–0.15 on next ignition signal.',
+  WATCHLIST:'Good setup forming. Needs one more confluence signal — unusual volume, OI wall proximity, or institutional tape.',
+  EXPANDED:'ADR already consumed today. Do not chase. Wait for next session reset.',
+  BORING:'ADR too low for explosive options moves. Skip unless extraordinary institutional tape confirms.',
+  BORDERLINE:'Marginal setup. Requires strong catalyst or unusual volume spike to justify entry.',
+};
+function renderADR(){
+  const d=symbols[activeSym];
+  $('adr-empty').style.display=d?'none':'flex';
+  $('adr-data').style.display=d?'block':'none';
+  if(!d||!d.adrPct)return;
+  const{adrPct,adrN,comp:{today,ratio,left},scored:{total,aS,cS,sig,lbl,col},intra}=d;
+  $('adr-ring').style.borderColor=col;
+  $('adr-score').style.color=col;$('adr-score').textContent=Math.round(total);
+  $('adr-title').textContent=activeSym+' — '+lbl;
+  $('adr-desc').textContent=ADR_BODIES[sig]||'';
+  $('adr-metrics').innerHTML=`
+    <div class="mb"><div class="mb-l">ADR%</div><div class="mb-v ${adrPct>=4?'up':adrPct>=2.5?'yw':'dn'}">${adrPct.toFixed(2)}%</div><div class="mb-s">${adrN}-day avg</div></div>
+    <div class="mb"><div class="mb-l">Today range%</div><div class="mb-v">${today!=null?today.toFixed(2)+'%':'—'}</div><div class="mb-s">intraday used</div></div>
+    <div class="mb"><div class="mb-l">Compression</div><div class="mb-v ${ratio!=null&&ratio<=0.35?'up':ratio>=0.80?'dn':'yw'}">${ratio!=null?ratio.toFixed(2)+'×':'—'}</div><div class="mb-s">today / ADR</div></div>
+    <div class="mb"><div class="mb-l">Exp left $</div><div class="mb-v up">${left!=null?'$'+left.toFixed(2):'—'}</div><div class="mb-s">range remaining</div></div>
+    <div class="mb"><div class="mb-l">Price</div><div class="mb-v">${intra?.p?'$'+intra.p.toFixed(2):'—'}</div><div class="mb-s">underlying</div></div>
+  `;
+  $('adr-breakdown').innerHTML=`
+    <div class="br-row"><div class="br-hd"><span>ADR magnitude</span><span>${aS}/40</span></div><div class="br-track"><div class="br-fill" style="width:${(aS/40)*100}%;background:${col};"></div></div></div>
+    <div class="br-row"><div class="br-hd"><span>Compression ratio</span><span>${cS}/30</span></div><div class="br-track"><div class="br-fill" style="width:${(cS/30)*100}%;background:${col};"></div></div></div>
+    <div class="br-row"><div class="br-hd"><span>Confluence (set in GEXEdge tab)</span><span>0/30</span></div><div class="br-track"><div class="br-fill" style="width:0%;background:${col};"></div></div></div>
+  `;
+  // History table
+  const rows=Object.values(symbols).filter(d=>d.adrPct).sort((a,b)=>b.scored.total-a.scored.total);
+  $('adr-history-lbl').textContent=rows.length+' symbols loaded';
+  $('adr-history').innerHTML=rows.map(d=>{
+    const{sym,adrPct,comp:{today,ratio,left},scored:{total,lbl,col,cls},intra}=d;
+    return`<tr onclick="setActive('${sym}')" style="cursor:pointer;">
+      <td class="ftk up">${sym}</td>
+      <td class="${adrPct>=4?'up ':''}ftk">${adrPct.toFixed(2)}%</td>
+      <td>${today!=null?today.toFixed(2)+'%':'—'}</td>
+      <td style="color:${ratio<=0.35?'var(--g)':ratio>=0.80?'var(--r)':'var(--tx)'};">${ratio!=null?ratio.toFixed(2)+'×':'—'}</td>
+      <td class="up">${left!=null?'$'+left.toFixed(2):'—'}</td>
+      <td>${intra?.p?'$'+intra.p.toFixed(2):'—'}</td>
+      <td style="color:${col};font-weight:600;">${Math.round(total)}</td>
+      <td><span class="sym-tag ${cls}">${lbl}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// RENDER — FLOW
+// ══════════════════════════════════════════
+const fmtP=n=>!n||n<1000?'$0':n>=1e6?'$'+(n/1e6).toFixed(1)+'M':'$'+(n/1e3).toFixed(0)+'K';
+
+function renderFlow(){
+  const d=symbols[activeSym];
+  $('flow-empty').style.display=d?.chain?'none':'flex';
+  $('flow-data').style.display=d?.chain?'block':'none';
+  if(!d?.chain)return;
+
+  // Net impact — all loaded symbols
+  const symsWithFlow=Object.values(symbols).filter(s=>s.callP!=null||s.putP!=null);
+  $('flow-net').innerHTML=symsWithFlow.length?symsWithFlow.sort((a,b)=>Math.abs((b.callP||0)-(b.putP||0))-Math.abs((a.callP||0)-(a.putP||0))).map(s=>{
+    const net=(s.callP||0)-(s.putP||0),total=(s.callP||0)+(s.putP||0);
+    const cW=total?(s.callP||0)/total*100:50,pW=total?(s.putP||0)/total*100:50;
+    return`<div class="ibar">
+      <div class="ibar-t">${s.sym}</div>
+      <div class="ibar-track"><div class="ibar-c" style="width:${cW.toFixed(1)}%;"></div><div class="ibar-p" style="width:${pW.toFixed(1)}%;"></div></div>
+      <div class="ibar-n" style="color:${net>=0?'var(--g)':'var(--r)'};">${net>=0?'+':''}${fmtP(Math.abs(net))}</div>
+    </div>`;
+  }).join(''):'<div style="color:var(--tx3);font-size:11px;">Fetch more symbols to compare</div>';
+
+  // Unusual
+  $('flow-unusual').innerHTML=(d.unusual||[]).map(c=>`<tr>
+    <td class="ftk">$${c.strike}</td>
+    <td style="color:${c.type==='call'?'var(--g)':'var(--r)'};">${(c.type||'').toUpperCase()}</td>
+    <td class="bl">${c.dte??'—'}d</td>
+    <td style="color:var(--p);font-weight:600;">${c.voi?.toFixed(1)||'—'}×</td>
+    <td style="color:var(--g);">${fmtP(c.prem)}</td>
+    <td>${c.iv?(c.iv*100).toFixed(1)+'%':'—'}</td>
+    <td style="color:${c.bias==='ASK'?'var(--g)':c.bias==='BID'?'var(--r)':'var(--tx3)'};">${c.bias||'—'}</td>
+  </tr>`).join('')||'<tr><td colspan="7" style="color:var(--tx3);">No unusual vol/OI found</td></tr>';
+
+  $('flow-chain-lbl').textContent=activeSym+' — '+(d.chain||[]).length+' contracts';
+  const cRow=c=>`<tr><td class="ftk">$${c.strike}</td><td class="bl">${c.dte??'—'}d</td><td>${c.vol?.toLocaleString()||'—'}</td><td style="color:${(c.voi||0)>=3?'var(--p)':'var(--tx)'};">${c.voi?.toFixed(1)||'—'}×</td><td>${c.iv?(c.iv*100).toFixed(1)+'%':'—'}</td><td>${c.delta?.toFixed(3)||'—'}</td></tr>`;
+  $('flow-calls').innerHTML=(d.topCalls||[]).map(cRow).join('')||'<tr><td colspan="6" style="color:var(--tx3);">No call data</td></tr>';
+  $('flow-puts').innerHTML=(d.topPuts||[]).map(cRow).join('')||'<tr><td colspan="6" style="color:var(--tx3);">No put data</td></tr>';
+}
+
+// ══════════════════════════════════════════
+// GEXEdge
+// ══════════════════════════════════════════
+const GS=[
+  {n:'Range fade',r:['pos','vwap'],d:'Price above flip, heavy positive GEX, vol dead. Tag call wall → stall → sell call credit spread or buy puts back toward gamma strike.',t:'Nearest gamma level',x:'Clean break + hold above call wall'},
+  {n:'Put wall bounce',r:['pos','vwap'],d:'Same long-gamma regime. Price dips into put wall — dealers buy weakness. Take the bounce, buy calls or sell put spreads.',t:'Back to pin / VWAP',x:'Break and hold below put wall'},
+  {n:'Flip cross',r:['flip'],d:'Price pressing gamma flip — the on/off switch. Lose it and hold below — volatility expands. Buy puts on confirmed 5-min close below flip.',t:'First put wall under flip',x:'Price reclaims above flip'},
+  {n:'Negative gamma trend',r:['neg'],d:'GEX negative — dealer hedging fuels the move. Lose opening-range low: buy puts. Reclaim opening high: buy calls. Trade the break in trend direction.',t:'Next gamma shelf',x:'Price reclaims the broken level'},
+  {n:'VWAP reversion',r:['pos','vwap'],d:'When pin (max gamma strike) aligns with VWAP — strongest magnet. Positive gamma keeps price glued. Fade any stretch back into zone. Iron fly/condor.',t:'VWAP / pin confluence',x:'Price breaks VWAP and holds other side'},
+  {n:'Afternoon pin',r:['pos','vwap'],d:'After 2 PM ET only. Price oscillating around biggest OI strike. Sell iron fly or strangle, collect theta decay into 4 PM expiry.',t:'Price glued to strike at 4 PM',x:'Decisive breakout from range'},
+  {n:'Broken wall chase',r:['pos','neg','flip','vwap'],d:'Price rips through major gamma wall with volume. Dealers who capped it flip to chasing. Wait for break-and-retest from the other side, then go with it.',t:'Next major strike up/down',x:'Falls back through wall — false break, exit immediately'},
+];
+const REGIME_INFO={
+  pos:{t:'Positive GEX — above flip',d:'Dealers long gamma. Buy dips, sell rips. Vol suppressed. Range-bound behavior. Trade wall rejections only. Avoid the middle.',c:'var(--g)'},
+  flip:{t:'Flip zone — regime transition',d:'Most dangerous zone. Do not fade compression. Wait for confirmed 5-min candle close above or below the flip level before entering.',c:'var(--y)'},
+  neg:{t:'Negative GEX — below flip',d:'Dealers hedge WITH the move — they are the accelerant. Vol expanding fast. Trend trades only. Never fade. Target the next gamma shelf.',c:'var(--r)'},
+  vwap:{t:'VWAP / pin confluence',d:'Strongest magnet on tape. Positive gamma keeps price glued. Iron fly or condor centered on pin. Fade stretches back into confluence zone.',c:'var(--b)'},
+};
+function drawGEX(){
+  const cw=parseFloat($('g-cw').value)||0,pw=parseFloat($('g-pw').value)||0;
+  const fl=parseFloat($('g-fl').value)||0,pi=parseFloat($('g-pi').value)||0;
+  const reg=$('g-reg').value;
+  const price=(activeSym&&symbols[activeSym]?.intra?.p)||((cw+pw)/2)||0;
+  const dv=(a,b)=>a&&b?(b>a?'var(--g)':'var(--r)'):'var(--tx3)';
+  if(price&&cw){$('gv-cw').textContent='$'+(price-cw).toFixed(2);$('gv-cw').className='mb-v '+(price<cw?'up':'dn');}else $('gv-cw').textContent='—';
+  if(price&&pw){$('gv-pw').textContent='$'+(price-pw).toFixed(2);$('gv-pw').className='mb-v '+(price>pw?'up':'dn');}else $('gv-pw').textContent='—';
+  if(price&&fl){$('gv-fl').textContent='$'+(price-fl).toFixed(2);$('gv-fl').className='mb-v '+(price>fl?'up':'dn');}else $('gv-fl').textContent='—';
+  $('gv-pi').textContent=price&&pi?'$'+(price-pi).toFixed(2):'—';
+  // Map
+  const map=$('gex-map');
+  if(cw&&pw){
+    const lo=pw-3,hi=cw+3,span=hi-lo;
+    const pct=v=>Math.max(2,Math.min(96,((hi-v)/span)*100));
+    map.innerHTML=`
+      <div class="gx-z" style="background:rgba(255,87,87,.07);top:0;height:${pct(cw)}%"></div>
+      <div class="gx-z" style="background:rgba(0,229,160,.07);top:${pct(cw)}%;height:${pct(pw)-pct(cw)}%"></div>
+      <div class="gx-z" style="background:rgba(255,87,87,.07);top:${pct(pw)}%;height:${100-pct(pw)}%"></div>
+      ${cw?`<div class="gx-l" style="top:${pct(cw)}%;background:var(--r);"><span class="gx-lbl" style="color:var(--r);">$${cw} call wall</span></div>`:''}
+      ${fl?`<div class="gx-l" style="top:${pct(fl)}%;background:var(--y);"><span class="gx-lbl" style="color:var(--y);">$${fl} flip</span></div>`:''}
+      ${pi?`<div class="gx-l" style="top:${pct(pi)}%;background:var(--b);"><span class="gx-lbl" style="color:var(--b);">$${pi} pin</span></div>`:''}
+      ${pw?`<div class="gx-l" style="top:${pct(pw)}%;background:var(--r);"><span class="gx-lbl" style="color:var(--r);">$${pw} put wall</span></div>`:''}
+      ${price?`<div class="gx-arrow" style="top:${pct(price)-2}%;color:${price>(fl||cw/2)?'var(--g)':'var(--r)'};">▼</div>`:''}
+    `;
+  } else {
+    map.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font-size:11px;">Enter call wall + put wall to see map</div>';
+  }
+  const ri=REGIME_INFO[reg];
+  $('gex-regime-out').innerHTML=`<div style="border-left:3px solid ${ri.c};padding-left:12px;"><div style="font-size:13px;font-weight:600;color:${ri.c};margin-bottom:4px;">${ri.t}</div><div style="font-size:11px;color:var(--tx2);line-height:1.6;">${ri.d}</div></div>`;
+  $('gex-setups-out').innerHTML=GS.filter(s=>s.r.includes(reg)).map(s=>`
+    <div style="padding:9px 0;border-bottom:1px solid var(--b0);">
+      <div style="font-size:12px;font-weight:600;margin-bottom:3px;">${s.n}</div>
+      <div style="font-size:11px;color:var(--tx2);line-height:1.55;margin-bottom:5px;">${s.d}</div>
+      <div style="font-size:10px;font-family:var(--mono);display:flex;gap:16px;flex-wrap:wrap;">
+        <span style="color:var(--g);">Target: ${s.t}</span>
+        <span style="color:var(--r);">Exit: ${s.x}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════
+// CONTRACT DRILLDOWN
+// ══════════════════════════════════════════
+function buildOptTick(u,k,t,e){
+  const d=e.replace(/-/g,'').slice(2);
+  const s=String(Math.round(parseFloat(k)*1000)).padStart(8,'0');
+  return`O:${u.toUpperCase()}${d}${t==='call'?'C':'P'}${s}`;
+}
+function buildTickerLabel(){
+  const u=$('dc-u').value.trim().toUpperCase();
+  const k=$('dc-k').value;const t=$('dc-t').value;const e=$('dc-e').value;
+  if(u&&k&&e) $('dc-preview').textContent='Ticker: '+buildOptTick(u,k,t,e);
+  else $('dc-preview').textContent='—';
+}
+async function drillFetch(){
+  const u=$('dc-u').value.trim().toUpperCase();
+  const k=$('dc-k').value;const t=$('dc-t').value;const e=$('dc-e').value;
+  if(!u||!k||!e){toast('Fill all contract fields','err');return;}
+  if(!KEY){toast('API key required','err');return;}
+  const optTick=buildOptTick(u,k,t,e);
+  $('drill-empty').style.display='none';$('drill-data').style.display='block';
+  $('drill-err').style.display='none';$('drill-chart-lbl').textContent=optTick;
+  try{
+    const[snap,bars]=await Promise.all([
+      getSingleSnap(u,optTick).catch(e=>{$('drill-err').textContent=e.message;$('drill-err').style.display='block';return null;}),
+      getOptBars(optTick).catch(()=>[]),
+    ]);
+    const m=snap||{};
+    $('drill-metrics').innerHTML=`
+      <div class="mb"><div class="mb-l">Last price</div><div class="mb-v up">$${m.last?.toFixed(2)||'—'}</div></div>
+      <div class="mb"><div class="mb-l">Volume</div><div class="mb-v">${m.vol?.toLocaleString()||'—'}</div></div>
+      <div class="mb"><div class="mb-l">Open int</div><div class="mb-v">${m.oi?.toLocaleString()||'—'}</div></div>
+      <div class="mb"><div class="mb-l">Vol/OI ${(m.voi||0)>=3?'★':''}</div><div class="mb-v ${(m.voi||0)>=3?'up':''}">${m.voi?.toFixed(2)||'—'}×</div></div>
+      <div class="mb"><div class="mb-l">Premium</div><div class="mb-v up">${fmtP(m.prem)}</div></div>
+      <div class="mb"><div class="mb-l">OTM%</div><div class="mb-v">${m.otm!=null?(m.otm>=0?'+':'')+m.otm.toFixed(1)+'%':'—'}</div></div>
+      <div class="mb"><div class="mb-l">IV</div><div class="mb-v yw">${m.iv?(m.iv*100).toFixed(1)+'%':'—'}</div></div>
+      <div class="mb"><div class="mb-l">DTE</div><div class="mb-v">${m.dte??'—'}d</div></div>
+    `;
+    $('drill-greeks').innerHTML=`
+      ${['delta','gamma','theta','vega'].map(g=>`<div class="srow"><span class="slab">${g}</span><span class="sval ${g==='theta'?'dn':''}">${m[g]?.toFixed(4)||'—'}</span></div>`).join('')}
+      <div class="srow"><span class="slab">Bid / Ask</span><span class="sval">${m.bid?.toFixed(2)||'—'} / ${m.ask?.toFixed(2)||'—'}</span></div>
+      <div class="srow"><span class="slab">Underlying</span><span class="sval">${m.up?'$'+m.up.toFixed(2):'—'} <span class="${(m.uchg||0)>=0?'up':'dn'}">(${m.uchg?.toFixed(2)||'—'}%)</span></span></div>
+    `;
+    if(bars.length){
+      let ask=0,bid=0,mid=0;
+      bars.forEach(b=>{const c=(b.h+b.l)/2;if(b.c>c)ask++;else if(b.c<c)bid++;else mid++;});
+      const tot=ask+bid+mid||1;
+      $('drill-bias').innerHTML=['ASK','MID','BID'].map((l,i)=>{
+        const n=[ask,mid,bid][i],pct=n/tot*100,cl=['var(--g)','var(--tx3)','var(--r)'][i];
+        return`<div class="br-row"><div class="br-hd"><span style="color:${cl};">${l}</span><span>${pct.toFixed(1)}%</span></div><div class="br-track"><div class="br-fill" style="width:${pct}%;background:${cl};"></div></div></div>`;
+      }).join('');
+    }else{$('drill-bias').innerHTML='<div style="color:var(--tx3);font-size:11px;">No intraday bar data</div>';}
+    $('drill-chart-sub').textContent=bars.length?bars.length+' 5-min bars':'No chart data';
+    if(drillChart){drillChart.destroy();drillChart=null;}
+    if(bars.length){
+      drillChart=new Chart($('drill-chart'),{type:'bar',data:{
+        labels:bars.map(b=>new Date(b.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})),
+        datasets:[
+          {type:'line',label:'VWAP',data:bars.map(b=>b.vw),borderColor:'rgba(0,229,160,.8)',borderWidth:1.5,pointRadius:0,tension:.2,yAxisID:'y'},
+          {label:'Vol',data:bars.map(b=>b.v),backgroundColor:'rgba(77,159,255,.28)',yAxisID:'y2'},
+        ]
+      },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{
+        x:{ticks:{color:'#3d4f63',font:{size:9},maxTicksLimit:10},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{ticks:{color:'#3d4f63',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'},position:'right'},
+        y2:{display:false},
+      }}});
+    }
+    toast('Contract loaded: '+optTick,'ok');
+  }catch(e){$('drill-err').textContent=e.message;$('drill-err').style.display='block';toast(e.message,'err');}
+}
+
+// ══════════════════════════════════════════
+// WEBSOCKET
+// ══════════════════════════════════════════
+function toggleWS(){
+  if(ws&&ws.readyState===WebSocket.OPEN){ws.close();ws=null;wsSubbed=null;$('ws-btn').textContent='Connect WebSocket';$('ws-pill').style.display='none';return;}
+  if(!KEY){toast('API key required','err');return;}
+  $('ws-pill').style.display='flex';$('ws-txt').textContent='Connecting…';
+  ws=new WebSocket('wss://socket.massive.com/stocks?apiKey='+KEY);
+  ws.onopen=()=>{
+    const sym=activeSym||Object.keys(symbols)[0];
+    if(sym){ws.send(JSON.stringify({action:'subscribe',params:'AM.'+sym}));wsSubbed=sym;}
+    setLed('ws-led','ws-txt','on','Live · '+(sym||'—'));
+    $('ws-btn').textContent='Disconnect WS';
+    $('tape').innerHTML='';toast('WebSocket connected','ok');
+  };
+  ws.onmessage=evt=>{
+    try{JSON.parse(evt.data).forEach(m=>{if(m.ev==='AM')onTick(m);});}catch(e){}
+  };
+  ws.onclose=()=>{setLed('ws-led','ws-txt','err','Disconnected');$('ws-btn').textContent='Reconnect WS';ws=null;wsSubbed=null;};
+  ws.onerror=()=>{toast('WS error','err');setLed('ws-led','ws-txt','err','Error');};
+}
+function onTick(m){
+  const sym=m.sym;
+  // tape
+  const tape=$('tape');
+  let el=tape.querySelector('[data-sym="'+sym+'"]');
+  if(!el){if(tape.children.length>8)tape.removeChild(tape.firstChild);el=document.createElement('div');el.className='tape-item';el.dataset.sym=sym;tape.appendChild(el);}
+  const chg=m.c-(m.o||m.c);
+  el.innerHTML=`<span style="color:var(--tx3);">${sym}</span><span>$${m.c.toFixed(2)}</span><span style="color:${chg>=0?'var(--g)':'var(--r)'};">${chg>=0?'+':''}${chg.toFixed(2)}</span>`;
+  // live ADR update
+  if(symbols[sym]){
+    const d=symbols[sym];
+    d.intra.h=Math.max(d.intra.h||0,m.h);d.intra.l=Math.min(d.intra.l||Infinity,m.l);d.intra.p=m.c;
+    const comp=calcComp(d.intra,d.adrPct);d.comp=comp;d.scored=calcScore(d.adrPct,comp.ratio??0.5);
+    if(sym===activeSym)renderADR();
+    const sc=document.querySelector('.sym-card[data-sym="'+sym+'"] .sym-score');
+    if(sc){sc.textContent=Math.round(d.scored.total);sc.style.color=d.scored.col;}
+  }
+}
+
+// ══════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════
+function switchTab(name){
+  ['adr','gex','flow','drill'].forEach(n=>$('pan-'+n).style.display=n===name?'block':'none');
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('on',['adr','gex','flow','drill'][i]===name));
+  if(name==='gex')drawGEX();
+}
+['adr','gex','flow','drill'].forEach((n,i)=>$('pan-'+n).style.display=i===0?'block':'none');
+setTimeout(drawGEX,80);
+</script>
+</body>
+</html>
