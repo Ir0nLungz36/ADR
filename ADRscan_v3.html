@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADRscan</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#06080b;--s1:#0b0f14;--s2:#111820;--s3:#18222e;
+  --b0:rgba(255,255,255,.06);--b1:rgba(255,255,255,.11);
+  --tx:#cdd6e0;--tx2:#6b7d8f;--tx3:#303d4d;
+  --g:#00dfa2;--g2:rgba(0,223,162,.1);
+  --b:#4c9eff;--b2:rgba(76,158,255,.1);
+  --y:#f0b429;--y2:rgba(240,180,41,.1);
+  --r:#ff5252;--r2:rgba(255,82,82,.1);
+  --p:#b06cff;--p2:rgba(176,108,255,.1);
+  --mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:13px;min-height:100vh;}
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-thumb{background:var(--s3);border-radius:3px;}
+
+.top{background:var(--s1);border-bottom:1px solid var(--b0);padding:0 18px;height:50px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50;}
+.logo{font-family:var(--mono);font-weight:700;font-size:14px;color:var(--g);letter-spacing:.04em;}
+.logo em{color:var(--tx2);font-style:normal;}
+.vsep{width:1px;height:18px;background:var(--b1);flex-shrink:0;}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;border:1px solid var(--b0);font-size:10px;font-family:var(--mono);color:var(--tx2);white-space:nowrap;}
+.led{width:5px;height:5px;border-radius:50%;background:var(--tx3);flex-shrink:0;}
+.led.on{background:var(--g);box-shadow:0 0 5px var(--g);}
+.led.spin{background:var(--y);animation:bl .8s infinite;}
+.led.err{background:var(--r);}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.2}}
+.spacer{flex:1;}
+.key-row{display:flex;align-items:center;gap:6px;}
+.key-row label{font-size:10px;color:var(--tx3);font-family:var(--mono);}
+.key-row input{background:var(--s2);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-family:var(--mono);font-size:11px;padding:5px 10px;width:190px;outline:none;transition:border-color .15s;}
+.key-row input:focus{border-color:var(--g);}
+.key-row input.ok{border-color:rgba(0,223,162,.35);}
+.clock{font-size:10px;font-family:var(--mono);color:var(--tx3);}
+
+.entry{background:var(--s1);border-bottom:1px solid var(--b0);padding:9px 18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.sym-box{display:flex;align-items:center;background:var(--s2);border:1px solid var(--b1);border-radius:6px;overflow:hidden;transition:border-color .15s;}
+.sym-box:focus-within{border-color:var(--g);}
+.sym-box input{background:transparent;border:none;color:var(--tx);font-family:var(--mono);font-weight:700;font-size:15px;padding:7px 12px;width:110px;outline:none;text-transform:uppercase;}
+.btn{background:var(--g);border:none;color:#03180e;font-family:var(--sans);font-weight:600;font-size:12px;padding:8px 18px;border-radius:6px;cursor:pointer;flex-shrink:0;}
+.btn:hover{opacity:.85;}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn-g{background:transparent;border:1px solid var(--b1);color:var(--tx2);font-size:11px;padding:7px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);}
+.btn-g:hover{border-color:var(--r);color:var(--r);}
+.hint{font-size:11px;color:var(--tx3);font-family:var(--mono);}
+.rate-grp{margin-left:auto;display:flex;align-items:center;gap:6px;}
+.rate-lbl{font-size:9px;color:var(--tx3);font-family:var(--mono);}
+.rate-tr{width:60px;height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
+.rate-f{height:3px;background:var(--g);border-radius:2px;transition:width .4s,background .3s;}
+
+/* cooldown overlay */
+.cooldown-bar{height:3px;background:var(--y2);border-bottom:1px solid rgba(240,180,41,.2);display:none;}
+.cooldown-bar.active{display:block;}
+.cooldown-fill{height:3px;background:var(--y);transition:width linear;}
+
+.legend{padding:7px 18px;border-bottom:1px solid var(--b0);display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.leg{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--tx3);font-family:var(--mono);}
+.leg-sq{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;padding:14px 18px;}
+
+/* CARD */
+.card{background:var(--s1);border:1px solid var(--b0);border-radius:12px;overflow:hidden;}
+.card.hg{border-color:rgba(176,108,255,.4);}
+.card.wl{border-color:rgba(76,158,255,.35);}
+.card.ex{border-color:rgba(255,82,82,.28);}
+
+.ch{padding:11px 14px 9px;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--b0);}
+.ch-sym{font-family:var(--mono);font-weight:700;font-size:20px;}
+.ch-meta{font-size:10px;color:var(--tx2);font-family:var(--mono);margin-top:2px;}
+.ch-r{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
+.ch-score{font-family:var(--mono);font-weight:700;font-size:26px;line-height:1;}
+.tag{font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 7px;border-radius:4px;}
+.t-hg{background:var(--p2);color:var(--p);}
+.t-wl{background:var(--b2);color:var(--b);}
+.t-ex{background:var(--r2);color:var(--r);}
+.t-bo{background:var(--s3);color:var(--tx3);}
+.t-bd{background:var(--y2);color:var(--y);}
+
+.cm{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--b0);}
+.met{padding:9px 8px 8px;border-right:1px solid var(--b0);display:flex;flex-direction:column;gap:2px;}
+.met:last-child{border-right:none;}
+.m-l{font-size:9px;color:var(--tx3);font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;}
+.m-v{font-size:14px;font-weight:600;font-family:var(--mono);line-height:1.1;}
+.m-s{font-size:9px;color:var(--tx3);font-family:var(--mono);}
+.up{color:var(--g)!important;}.dn{color:var(--r)!important;}.yw{color:var(--y)!important;}.pu{color:var(--p)!important;}.bl{color:var(--b)!important;}
+
+.cb{padding:9px 14px 11px;}
+.br{display:grid;grid-template-columns:80px 1fr 38px;align-items:center;gap:7px;margin-bottom:5px;}
+.br:last-child{margin-bottom:0;}
+.br-l{font-size:10px;color:var(--tx2);font-family:var(--mono);}
+.br-t{background:var(--s3);border-radius:2px;height:4px;overflow:hidden;}
+.br-f{height:4px;border-radius:2px;transition:width .5s;}
+.br-p{font-size:10px;font-family:var(--mono);color:var(--tx2);text-align:right;}
+
+.eod-note{background:var(--y2);border-top:1px solid rgba(240,180,41,.18);padding:5px 14px;font-size:10px;color:var(--y);font-family:var(--mono);}
+.cf{padding:6px 14px;border-top:1px solid var(--b0);display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);color:var(--tx3);gap:6px;}
+.cf-err{color:var(--r);}
+
+.card-load{padding:26px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--tx3);font-size:11px;font-family:var(--mono);}
+.spinner{width:12px;height:12px;border:2px solid var(--b0);border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 20px;gap:10px;color:var(--tx3);text-align:center;}
+.empty-i{font-size:32px;opacity:.15;}
+.empty-t{font-size:14px;font-weight:500;color:var(--tx2);}
+.empty-s{font-size:12px;max-width:340px;line-height:1.7;}
+
+#toast{position:fixed;bottom:18px;right:18px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:9px 13px;font-size:11px;font-family:var(--mono);z-index:100;transform:translateY(52px);transition:transform .2s;max-width:300px;}
+#toast.show{transform:translateY(0);}
+#toast.ok{border-color:rgba(0,223,162,.4);color:var(--g);}
+#toast.err{border-color:rgba(255,82,82,.4);color:var(--r);}
+#toast.warn{border-color:rgba(240,180,41,.35);color:var(--y);}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">ADR<em>scan</em></div>
+  <div class="vsep"></div>
+  <div class="chip"><div class="led" id="mkt-led"></div><span id="mkt-txt">Market —</span></div>
+  <div class="chip"><div class="led" id="api-led"></div><span id="api-txt">No key</span></div>
+  <div class="spacer"></div>
+  <div class="key-row">
+    <label>KEY</label>
+    <input type="password" id="api-key" placeholder="paste Massive API key" oninput="onKey()">
+  </div>
+  <div class="clock" id="clock"></div>
+</div>
+
+<div class="entry">
+  <div class="sym-box">
+    <input type="text" id="sym" placeholder="MSFT" maxlength="8"
+      onkeydown="if(event.key==='Enter')doScan()"
+      oninput="this.value=this.value.toUpperCase()">
+  </div>
+  <button class="btn" id="scan-btn" onclick="doScan()">Scan</button>
+  <button class="btn-g" onclick="clearAll()">Clear all</button>
+  <span class="hint" id="hint">Enter a symbol → Scan</span>
+  <div class="rate-grp">
+    <span class="rate-lbl" id="rate-txt">0 req</span>
+    <div class="rate-tr"><div class="rate-f" id="rate-f" style="width:0;"></div></div>
+  </div>
+</div>
+
+<!-- cooldown progress bar -->
+<div class="cooldown-bar" id="cd-bar">
+  <div class="cooldown-fill" id="cd-fill" style="width:100%;"></div>
+</div>
+
+<div class="legend">
+  <span style="font-size:10px;color:var(--tx3);">5 metrics per card:</span>
+  <div class="leg"><div class="leg-sq" style="background:var(--g);"></div>ADR%</div>
+  <div class="leg"><div class="leg-sq" style="background:var(--p);"></div>Vol/OI</div>
+  <div class="leg"><div class="leg-sq" style="background:var(--b);"></div>Compression</div>
+  <div class="leg"><div class="leg-sq" style="background:var(--y);"></div>IV%</div>
+  <div class="leg"><div class="leg-sq" style="background:var(--r);"></div>Net flow</div>
+  <div class="leg" style="margin-left:auto;"><div class="leg-sq" style="background:var(--y);"></div>Yellow = EOD data</div>
+</div>
+
+<div class="grid" id="grid">
+  <div class="empty">
+    <div class="empty-i">◎</div>
+    <div class="empty-t">ADR Quick Scanner</div>
+    <div class="empty-s">Paste your Massive API key, type one symbol at a time, and press Scan. Loads 3 API calls per symbol — works during and after market hours.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// STRICT SEQUENTIAL QUEUE
+// — one request at a time, 400ms gap minimum
+// — NO retries on 429 (fail fast, show error)
+// — NO automatic background calls
+// — ONLY these endpoints:
+//     /v2/aggs/ticker/{sym}/range/1/day   → ADR
+//     /v2/aggs/ticker/{sym}/prev          → EOD price
+//     /v3/snapshot/options/{sym}          → chain
+//   (intraday omitted — not needed for EOD baseline)
+// ═══════════════════════════════════════════════
+
+const Q = [];
+let QR = false;
+const GAP = 400; // ms between requests — conservative
+
+// Rate tracking
+let reqLog = [];
+function trackReq() {
+  const now = Date.now();
+  reqLog = reqLog.filter(t => now - t < 60000);
+  reqLog.push(now);
+  const n = reqLog.length;
+  const pct = Math.min(100, (n / 100) * 100);
+  const f = $('rate-f');
+  f.style.width = pct + '%';
+  f.style.background = pct > 75 ? 'var(--r)' : pct > 45 ? 'var(--y)' : 'var(--g)';
+  $('rate-txt').textContent = n + ' req/min';
+}
+
+function enq(fn) {
+  return new Promise((ok, err) => {
+    Q.push({ fn, ok, err });
+    if (!QR) drain();
+  });
+}
+
+async function drain() {
+  QR = true;
+  while (Q.length) {
+    const { fn, ok, err } = Q.shift();
+    try {
+      trackReq();
+      ok(await fn());
+    } catch (e) {
+      err(e);
+    }
+    if (Q.length) await sleep(GAP);
+  }
+  QR = false;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+let KEY = '';
+let scanInFlight = false;
+let cooldownUntil = 0;
+const cards = {};
+const $ = id => document.getElementById(id);
+
+setInterval(() => {
+  $('clock').textContent = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/New_York'
+  }) + ' ET';
+}, 1000);
+
+function toast(msg, t = 'ok') {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show ' + t;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3500);
+}
+
+function setLed(id, tid, st, txt) {
+  $(id).className = 'led ' + (st === 'on' ? 'on' : st === 'spin' ? 'spin' : st === 'err' ? 'err' : '');
+  if (tid) $(tid).textContent = txt;
+}
+
+function onKey() {
+  KEY = $('api-key').value.trim();
+  $('api-key').className = KEY.length > 10 ? 'ok' : '';
+  setLed('api-led', 'api-txt', KEY.length > 10 ? 'on' : '', KEY.length > 10 ? 'Key set' : 'No key');
+}
+
+// Cooldown bar — shows after a 429 so user knows to wait
+function startCooldown(ms) {
+  const bar = $('cd-bar');
+  const fill = $('cd-fill');
+  bar.classList.add('active');
+  fill.style.transition = 'none';
+  fill.style.width = '100%';
+  cooldownUntil = Date.now() + ms;
+  setTimeout(() => {
+    fill.style.transition = `width ${ms}ms linear`;
+    fill.style.width = '0%';
+  }, 20);
+  setTimeout(() => {
+    bar.classList.remove('active');
+    cooldownUntil = 0;
+    $('scan-btn').disabled = false;
+    $('hint').textContent = 'Ready — you can scan again';
+  }, ms);
+}
+
+// ═══════════════════════════════════════════════
+// MASSIVE API — 3 CALLS ONLY, NO INDICATORS
+// ═══════════════════════════════════════════════
+const BASE = 'https://api.massive.com';
+
+async function mget(path, params = {}) {
+  return enq(async () => {
+    const url = new URL(BASE + path);
+    url.searchParams.set('apiKey', KEY);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+
+    const r = await fetch(url.toString());
+
+    if (r.status === 429) {
+      // FAIL FAST — no retry, just surface the error
+      throw new Error('RATE_LIMITED');
+    }
+    if (r.status === 400) throw new Error('No options data (400)');
+    if (r.status === 403) throw new Error('Endpoint not in plan (403)');
+    if (r.status === 404) throw new Error('Symbol not found (404)');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    return r.json();
+  });
+}
+
+// CALL 1: Daily bars → ADR (always available)
+async function fetchDaily(sym, days = 20) {
+  const to = new Date(), from = new Date();
+  from.setDate(from.getDate() - Math.ceil(days * 1.5));
+  const f = d => d.toISOString().slice(0, 10);
+  const j = await mget(
+    `/v2/aggs/ticker/${sym}/range/1/day/${f(from)}/${f(to)}`,
+    { adjusted: 'true', sort: 'desc', limit: days + 7 }
+  );
+  return (j.results || []).map(b => ({ h: b.h, l: b.l, c: b.c, v: b.v, t: b.t }));
+}
+
+// CALL 2: Previous day bar → EOD price (always available)
+async function fetchPrev(sym) {
+  const j = await mget(`/v2/aggs/ticker/${sym}/prev`, { adjusted: 'true' });
+  return (j.results || [])[0] || null;
+}
+
+// CALL 3: Options chain snapshot (returns EOD data after hours)
+async function fetchChain(sym) {
+  const exp90 = new Date();
+  exp90.setDate(exp90.getDate() + 90);
+  const j = await mget(`/v3/snapshot/options/${sym}`, {
+    limit: 250,
+    sort: 'volume',
+    order: 'desc',
+    expiration_date_lte: exp90.toISOString().slice(0, 10),
+  });
+  if (!j.results || !j.results.length) return [];
+  return j.results.map(normSnap).filter(Boolean);
+}
+
+function normSnap(r) {
+  if (!r) return null;
+  const d = r.details || {}, g = r.greeks || {},
+    q = r.last_quote || {}, tr = r.last_trade || {},
+    u = r.underlying_asset || {}, day = r.day || {};
+  const last = tr.price || ((q.ask && q.bid) ? (q.ask + q.bid) / 2 : null);
+  const dte = d.expiration_date
+    ? Math.ceil((new Date(d.expiration_date) - Date.now()) / 86400000)
+    : null;
+  const voi = (day.volume && r.open_interest)
+    ? +(day.volume / r.open_interest).toFixed(2) : null;
+  const prem = (last && day.volume)
+    ? +(last * day.volume * 100).toFixed(0) : null;
+  return {
+    type: d.contract_type, strike: d.strike_price, dte,
+    voi, prem, iv: r.implied_volatility,
+    vol: day.volume, oi: r.open_interest,
+    delta: g.delta, up: u.price,
+    bid: q.bid, ask: q.ask, last,
+  };
+}
+
+// ═══════════════════════════════════════════════
+// COMPUTE 5 METRICS
+// ═══════════════════════════════════════════════
+
+// 1. ADR% — 20-day average daily range
+function calcADR(bars, n = 20) {
+  const s = bars.slice(0, n);
+  if (s.length < 3) return null;
+  const ranges = s.map(b => +((b.h - b.l) / b.c * 100).toFixed(4));
+  return +(ranges.reduce((a, r) => a + r, 0) / ranges.length).toFixed(2);
+}
+
+// 2. Vol/OI — highest ratio from chain
+function calcVolOI(chain) {
+  if (!chain.length) return null;
+  const top = chain
+    .filter(c => c.voi && c.vol >= 50)
+    .sort((a, b) => b.voi - a.voi)[0];
+  if (!top) return null;
+  return { ratio: top.voi, strike: top.strike, type: top.type, dte: top.dte };
+}
+
+// 3. Compression — prev day range / ADR (EOD baseline)
+function calcCompression(prevBar, adr) {
+  if (!prevBar || !adr) return null;
+  const prevRange = (prevBar.h - prevBar.l) / prevBar.c * 100;
+  return +(prevRange / adr).toFixed(2);
+}
+
+// 4. IV% — median implied volatility from near-term contracts
+function calcIV(chain) {
+  let sample = chain.filter(c => c.iv && c.dte != null && c.dte >= 0 && c.dte <= 45);
+  if (!sample.length) sample = chain.filter(c => c.iv);
+  if (!sample.length) return null;
+  const sorted = sample.map(c => c.iv).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+  return +(median * 100).toFixed(1);
+}
+
+// 5. Net flow — call vs put premium split
+function calcFlow(chain) {
+  let cP = 0, pP = 0;
+  chain.forEach(c => {
+    if (!c.prem) return;
+    c.type === 'call' ? (cP += c.prem) : (pP += c.prem);
+  });
+  const total = cP + pP;
+  if (!total) return null;
+  return {
+    callPct: +(cP / total * 100).toFixed(1),
+    putPct: +(pP / total * 100).toFixed(1),
+    bias: cP > pP ? 'BULL' : 'BEAR',
+  };
+}
+
+// Coil score
+function coilScore(adr, comp) {
+  if (!adr || comp == null) return null;
+  const aS = Math.min(40, (adr / 8) * 40);
+  let cS = 0;
+  if (comp <= 0.20) cS = 30;
+  else if (comp <= 0.35) cS = 26;
+  else if (comp <= 0.50) cS = 20;
+  else if (comp <= 0.65) cS = 12;
+  else if (comp <= 0.80) cS = 5;
+  return Math.min(100, Math.round(aS + cS));
+}
+
+function scoreInfo(adr, comp, score) {
+  if (score == null) return { lbl: '—', cls: 't-bo', col: 'var(--tx3)', cc: '' };
+  if (adr >= 4 && comp <= 0.35 && score >= 76) return { lbl: 'Holy grail coil', cls: 't-hg', col: 'var(--p)', cc: 'hg' };
+  if (comp >= 0.80) return { lbl: 'Move expanded', cls: 't-ex', col: 'var(--r)', cc: 'ex' };
+  if (adr >= 3 && comp <= 0.50) return { lbl: 'Watchlist coil', cls: 't-wl', col: 'var(--b)', cc: 'wl' };
+  if (adr < 2.5) return { lbl: 'Too low ADR', cls: 't-bo', col: 'var(--tx3)', cc: '' };
+  return { lbl: 'Borderline', cls: 't-bd', col: 'var(--y)', cc: '' };
+}
+
+// ═══════════════════════════════════════════════
+// SCAN — exactly 3 API calls, no retries
+// ═══════════════════════════════════════════════
+let mktChecked = false;
+
+async function doScan() {
+  if (!KEY) { toast('Paste API key first', 'err'); return; }
+
+  const sym = $('sym').value.trim().toUpperCase();
+  if (!sym) { toast('Enter a symbol', 'err'); return; }
+
+  if (Date.now() < cooldownUntil) {
+    toast('Cooldown active — wait for the bar to clear', 'warn');
+    return;
+  }
+  if (scanInFlight) { toast('Scan in progress…', 'warn'); return; }
+
+  scanInFlight = true;
+  $('scan-btn').disabled = true;
+  $('hint').textContent = 'Loading ' + sym + '…';
+  setLed('api-led', 'api-txt', 'spin', 'Scanning…');
+
+  cards[sym] = { loading: true };
+  renderGrid();
+
+  const d = {
+    sym,
+    ts: new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York'
+    }),
+  };
+
+  let rateLimited = false;
+
+  // ── CALL 1: Daily bars ──────────────────────
+  try {
+    const bars = await fetchDaily(sym, 20);
+    d.adr = calcADR(bars, 20);
+  } catch (e) {
+    if (e.message === 'RATE_LIMITED') { rateLimited = true; }
+    else { d.dailyErr = e.message; }
+  }
+
+  // ── CALL 2: Prev day bar ────────────────────
+  if (!rateLimited) {
+    try {
+      const prev = await fetchPrev(sym);
+      d.prev = prev;
+      d.price = prev?.c ?? null;
+      d.comp = calcCompression(prev, d.adr);
+    } catch (e) {
+      if (e.message === 'RATE_LIMITED') { rateLimited = true; }
+      else { d.prevErr = e.message; }
+    }
+  }
+
+  // ── CALL 3: Options chain ───────────────────
+  if (!rateLimited) {
+    try {
+      const chain = await fetchChain(sym);
+      d.chain = chain;
+      if (chain.length) {
+        const voi = calcVolOI(chain);
+        d.voi = voi?.ratio ?? null;
+        d.voiDetail = voi ? `${(voi.type || '').toUpperCase()} $${voi.strike} ${voi.dte ?? ''}d` : null;
+        d.iv = calcIV(chain);
+        const flow = calcFlow(chain);
+        if (flow) { d.callPct = flow.callPct; d.putPct = flow.putPct; d.flowBias = flow.bias; }
+        d.chainCount = chain.length;
+      } else {
+        d.chainErr = 'No options data returned';
+      }
+    } catch (e) {
+      if (e.message === 'RATE_LIMITED') { rateLimited = true; }
+      else { d.chainErr = e.message; }
+    }
+  }
+
+  if (rateLimited) {
+    // Remove the loading card, don't store bad data
+    delete cards[sym];
+    renderGrid();
+    toast('Rate limited — waiting 10s before you can scan again', 'warn');
+    $('hint').textContent = 'Rate limited — cooldown active';
+    startCooldown(10000);
+    setLed('api-led', 'api-txt', 'err', 'Rate limited');
+    scanInFlight = false;
+    return;
+  }
+
+  // Score
+  d.score = coilScore(d.adr, d.comp);
+  d.si = scoreInfo(d.adr, d.comp, d.score);
+  d.loading = false;
+  cards[sym] = d;
+  renderGrid();
+
+  setLed('api-led', 'api-txt', 'on', 'OK');
+  $('scan-btn').disabled = false;
+  $('sym').value = '';
+  $('sym').focus();
+  $('hint').textContent = 'Last: ' + sym + ' at ' + d.ts + ' ET';
+  scanInFlight = false;
+
+  const chainNote = d.chainErr ? ' | ⚠ ' + d.chainErr.slice(0, 28) : '';
+  toast(sym + ' loaded' + chainNote, d.chainErr ? 'warn' : 'ok');
+
+  // Check market status once (after first successful scan)
+  if (!mktChecked) {
+    mktChecked = true;
+    try {
+      const j = await mget('/v1/marketstatus/now');
+      const open = j.market === 'open';
+      setLed('mkt-led', 'mkt-txt', open ? 'on' : 'err', 'Market ' + (open ? 'open' : 'closed'));
+    } catch (e) {}
+  }
+}
+
+function clearAll() {
+  Object.keys(cards).forEach(k => delete cards[k]);
+  renderGrid();
+  $('hint').textContent = 'Enter a symbol → Scan';
+  toast('Cleared', 'ok');
+}
+
+// ═══════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════
+const fmtP = n => !n ? '$0' : n >= 1e9 ? '$' + (n / 1e9).toFixed(1) + 'B'
+  : n >= 1e6 ? '$' + (n / 1e6).toFixed(1) + 'M' : '$' + (n / 1e3).toFixed(0) + 'K';
+
+function renderGrid() {
+  const syms = Object.keys(cards);
+  if (!syms.length) {
+    $('grid').innerHTML = `<div class="empty">
+      <div class="empty-i">◎</div>
+      <div class="empty-t">ADR Quick Scanner</div>
+      <div class="empty-s">Paste your Massive API key → type a U.S. equity or ETF symbol → Scan.<br>3 API calls per symbol. Works EOD.</div>
+    </div>`;
+    return;
+  }
+  $('grid').innerHTML = syms.map(sym => {
+    if (cards[sym]?.loading) {
+      return `<div class="card" id="card-${sym}">
+        <div class="card-load"><div class="spinner"></div>Loading ${sym}…</div>
+      </div>`;
+    }
+    return buildCard(sym);
+  }).join('');
+}
+
+function buildCard(sym) {
+  const d = cards[sym];
+  if (!d || d.loading) return `<div class="card" id="card-${sym}"><div class="card-load"><div class="spinner"></div>Loading ${sym}…</div></div>`;
+
+  const { adr, comp, score, si, price, voi, voiDetail, iv,
+    callPct, putPct, flowBias, chainErr, chainCount, dailyErr, prevErr, ts } = d;
+
+  // Metric 1: ADR%
+  const adrV = adr != null ? adr.toFixed(2) + '%' : '—';
+  const adrC = adr >= 4 ? 'up' : adr >= 2.5 ? 'yw' : adr > 0 ? 'dn' : '';
+  const adrS = adr ? (adr >= 4 ? 'explosive' : adr >= 2.5 ? 'moderate' : 'low') : (dailyErr ? 'error' : '—');
+
+  // Metric 2: Vol/OI
+  const voiV = voi != null ? voi.toFixed(1) + '×' : '—';
+  const voiC = voi >= 10 ? 'pu' : voi >= 3 ? 'bl' : '';
+  const voiSig = voi >= 10 ? 'EXTREME' : voi >= 5 ? 'VERY HIGH' : voi >= 3 ? 'UNUSUAL' : voi > 0 ? 'normal' : '—';
+
+  // Metric 3: Compression
+  const compV = comp != null ? comp.toFixed(2) + '×' : '—';
+  const compC = comp <= 0.35 ? 'up' : comp >= 0.80 ? 'dn' : comp > 0 ? 'yw' : '';
+  const compS = comp != null ? (comp <= 0.35 ? 'tight coil' : comp >= 0.80 ? 'expanded' : 'moderate') : '—';
+  const expLeft = adr && comp && price ? Math.max(0, (adr / 100 * price) * (1 - comp)) : null;
+
+  // Metric 4: IV%
+  const ivV = iv != null ? iv.toFixed(1) + '%' : '—';
+  const ivC = iv > 60 ? 'dn' : iv > 35 ? 'yw' : '';
+  const ivS = iv ? (iv > 60 ? 'extreme' : iv > 35 ? 'elevated' : 'normal') : '—';
+
+  // Metric 5: Flow
+  const flowV = flowBias || '—';
+  const flowC = flowBias === 'BULL' ? 'up' : flowBias === 'BEAR' ? 'dn' : '';
+  const flowS = callPct != null ? callPct.toFixed(0) + '%C / ' + putPct.toFixed(0) + '%P' : '—';
+
+  const priceStr = price ? '$' + price.toFixed(2) : '—';
+  const meta = `${priceStr} · ${ts} ET EOD`;
+
+  const compBarW = Math.min(100, ((comp || 0) * 100)).toFixed(1);
+  const compBarCol = comp <= 0.35 ? 'var(--g)' : comp >= 0.80 ? 'var(--r)' : 'var(--y)';
+
+  const errText = chainErr || dailyErr || prevErr || '';
+
+  return `<div class="card ${si.cc}" id="card-${sym}">
+    <div class="ch">
+      <div>
+        <div class="ch-sym">${sym}</div>
+        <div class="ch-meta">${meta}</div>
+      </div>
+      <div class="ch-r">
+        <div class="ch-score" style="color:${si.col};">${score ?? '—'}</div>
+        <div class="tag ${si.cls}">${si.lbl}</div>
+      </div>
+    </div>
+
+    <div class="cm">
+      <div class="met"><div class="m-l">ADR%</div><div class="m-v ${adrC}">${adrV}</div><div class="m-s">${adrS}</div></div>
+      <div class="met"><div class="m-l">Vol/OI</div><div class="m-v ${voiC}">${voiV}</div><div class="m-s">${voiSig}</div></div>
+      <div class="met"><div class="m-l">Comp.</div><div class="m-v ${compC}">${compV}</div><div class="m-s">${compS}</div></div>
+      <div class="met"><div class="m-l">IV%</div><div class="m-v ${ivC}">${ivV}</div><div class="m-s">${ivS}</div></div>
+      <div class="met"><div class="m-l">Flow</div><div class="m-v ${flowC}">${flowV}</div><div class="m-s">${flowS}</div></div>
+    </div>
+
+    <div class="cb">
+      <div class="br">
+        <div class="br-l">ADR used</div>
+        <div class="br-t"><div class="br-f" style="width:${compBarW}%;background:${compBarCol};"></div></div>
+        <div class="br-p">${comp != null ? (comp * 100).toFixed(0) + '%' : '—'}</div>
+      </div>
+      <div class="br">
+        <div class="br-l">Call prem</div>
+        <div class="br-t"><div class="br-f" style="width:${callPct || 0}%;background:var(--g);"></div></div>
+        <div class="br-p">${callPct != null ? callPct.toFixed(0) + '%' : '—'}</div>
+      </div>
+      <div class="br">
+        <div class="br-l">Put prem</div>
+        <div class="br-t"><div class="br-f" style="width:${putPct || 0}%;background:var(--r);"></div></div>
+        <div class="br-p">${putPct != null ? putPct.toFixed(0) + '%' : '—'}</div>
+      </div>
+    </div>
+
+    <div class="eod-note">EOD baseline · ${chainCount ? chainCount + ' contracts' : 'no chain'} · prev close $${price ? price.toFixed(2) : '—'}</div>
+
+    <div class="cf">
+      <span class="${errText ? 'cf-err' : ''}">${errText ? '⚠ ' + errText.slice(0, 38) : chainCount ? chainCount + ' contracts' : ''}</span>
+      <span>Exp left: ${expLeft ? '$' + expLeft.toFixed(2) : '—'}</span>
+      <span style="color:${voi >= 3 ? 'var(--p)' : 'var(--tx3)'};">${voiDetail || '—'}</span>
+    </div>
+  </div>`;
+}
+</script>
+</body>
+</html>
