@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADRscan</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05080c; --s1:#090d12; --s2:#0f151d; --s3:#151e28; --s4:#1b2535;
+  --b0:rgba(255,255,255,.05); --b1:rgba(255,255,255,.1);
+  --tx:#c8d4e0; --tx2:#5e7285; --tx3:#2b3d4f;
+  --g:#00d49a; --g1:rgba(0,212,154,.12); --g2:rgba(0,212,154,.05);
+  --b:#3d94ff; --b1c:rgba(61,148,255,.12);
+  --y:#e8ad20; --y1:rgba(232,173,32,.12);
+  --r:#ff4f4f; --r1:rgba(255,79,79,.12);
+  --p:#a855ff; --p1:rgba(168,85,255,.12);
+  --mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:13px;min-height:100vh;}
+::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-thumb{background:var(--s4);}
+
+/* TOP BAR */
+.top{background:var(--s1);border-bottom:1px solid var(--b0);height:54px;display:flex;align-items:center;padding:0 20px;gap:12px;position:sticky;top:0;z-index:99;}
+.logo{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--g);letter-spacing:.05em;white-space:nowrap;}
+.logo em{color:var(--tx3);font-style:normal;}
+.vsep{width:1px;height:22px;background:var(--b1);flex-shrink:0;}
+
+/* SCAN FORM */
+.form{display:flex;align-items:stretch;background:var(--s2);border:1px solid var(--b1);border-radius:7px;overflow:hidden;}
+.form:focus-within{border-color:var(--g);}
+.form input[type=text]{background:transparent;border:none;color:var(--tx);font-family:var(--mono);font-weight:700;font-size:16px;padding:8px 14px;width:120px;outline:none;text-transform:uppercase;letter-spacing:.06em;}
+.form input::placeholder{color:var(--tx3);font-weight:400;}
+.scan-btn{background:var(--g);border:none;color:#021a0e;font-family:var(--sans);font-weight:700;font-size:12px;padding:0 20px;cursor:pointer;letter-spacing:.04em;white-space:nowrap;transition:opacity .15s;}
+.scan-btn:hover{opacity:.85;}
+.scan-btn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* KEY */
+.key-group{display:flex;align-items:center;gap:7px;}
+.key-label{font-size:10px;color:var(--tx3);font-family:var(--mono);white-space:nowrap;}
+.key-input{background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-family:var(--mono);font-size:11px;padding:6px 11px;width:210px;outline:none;transition:border-color .15s;}
+.key-input:focus{border-color:var(--g);}
+.key-input.active{border-color:rgba(0,212,154,.45);}
+
+/* STATUS */
+.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--b0);font-size:10px;font-family:var(--mono);color:var(--tx2);white-space:nowrap;}
+.led{width:6px;height:6px;border-radius:50%;background:var(--tx3);flex-shrink:0;}
+.led.on{background:var(--g);box-shadow:0 0 6px rgba(0,212,154,.7);}
+.led.busy{background:var(--y);animation:blink .9s infinite;}
+.led.err{background:var(--r);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+.ml-auto{margin-left:auto;}
+.clock{font-size:11px;font-family:var(--mono);color:var(--tx3);white-space:nowrap;}
+
+/* PROGRESS */
+.prog-bar{height:2px;background:var(--s2);}
+.prog-fill{height:2px;width:0;background:var(--g);transition:width .4s ease;}
+
+/* BODY */
+.body{max-width:1080px;margin:0 auto;padding:20px 18px;}
+
+/* EMPTY */
+.empty-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:440px;gap:16px;text-align:center;}
+.empty-icon{font-size:36px;color:var(--g);opacity:.15;}
+.empty-title{font-size:17px;font-weight:500;color:var(--tx2);}
+.empty-desc{font-size:12px;color:var(--tx3);max-width:400px;line-height:1.85;}
+.steps{display:flex;flex-direction:column;gap:8px;text-align:left;margin-top:4px;}
+.step{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--tx3);font-family:var(--mono);}
+.step-n{width:22px;height:22px;border-radius:50%;border:1px solid var(--b1);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--tx2);flex-shrink:0;}
+.step-t{color:var(--tx2);}
+
+/* LOADING */
+.loading-wrap{display:flex;align-items:center;justify-content:center;min-height:400px;gap:12px;color:var(--tx2);font-family:var(--mono);font-size:12px;}
+.spinner{width:18px;height:18px;border:2px solid var(--b0);border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* DASHBOARD */
+.dash{display:none;}
+
+/* HEAD CARD */
+.head-card{background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:20px 24px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;}
+.hc-left{display:flex;flex-direction:column;gap:6px;}
+.hc-sym{font-family:var(--mono);font-weight:700;font-size:30px;letter-spacing:.04em;}
+.hc-meta{font-size:11px;color:var(--tx2);font-family:var(--mono);}
+.hc-badges{display:flex;align-items:center;gap:8px;margin-top:4px;}
+.eod-badge{display:inline-flex;align-items:center;gap:5px;background:var(--y1);border:1px solid rgba(232,173,32,.25);border-radius:5px;padding:3px 10px;font-size:10px;font-family:var(--mono);color:var(--y);}
+.chain-badge{display:inline-flex;align-items:center;gap:5px;background:var(--g1);border:1px solid rgba(0,212,154,.25);border-radius:5px;padding:3px 10px;font-size:10px;font-family:var(--mono);color:var(--g);}
+.chain-badge.err{background:var(--r1);border-color:rgba(255,79,79,.25);color:var(--r);}
+.hc-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+.score-big{font-family:var(--mono);font-weight:700;font-size:48px;line-height:1;transition:color .3s;}
+.score-sub{font-size:10px;color:var(--tx3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;}
+.sig-badge{font-size:11px;font-family:var(--mono);font-weight:600;padding:4px 12px;border-radius:5px;letter-spacing:.04em;}
+.sig-hg{background:var(--p1);color:var(--p);}
+.sig-wl{background:var(--b1c);color:var(--b);}
+.sig-ex{background:var(--r1);color:var(--r);}
+.sig-bo{background:var(--s3);color:var(--tx3);}
+.sig-bd{background:var(--y1);color:var(--y);}
+
+/* METRIC CARDS */
+.metric-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;}
+.mcard{background:var(--s1);border:1px solid var(--b0);border-radius:10px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:3px;}
+.mcard.hi-g{border-color:rgba(0,212,154,.35);background:var(--g2);}
+.mcard.hi-y{border-color:rgba(232,173,32,.3);}
+.mcard.hi-r{border-color:rgba(255,79,79,.3);}
+.mcard.hi-p{border-color:rgba(168,85,255,.3);}
+.mc-lbl{font-size:9px;color:var(--tx3);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;}
+.mc-val{font-size:23px;font-weight:700;font-family:var(--mono);line-height:1.05;transition:color .3s;}
+.mc-sub{font-size:10px;color:var(--tx3);font-family:var(--mono);}
+.mc-bar{background:var(--s3);border-radius:2px;height:3px;margin-top:7px;overflow:hidden;}
+.mc-fill{height:3px;border-radius:2px;transition:width .6s ease;}
+.c-g{color:var(--g)!important;} .c-r{color:var(--r)!important;} .c-y{color:var(--y)!important;} .c-p{color:var(--p)!important;} .c-b{color:var(--b)!important;}
+
+/* DETAIL GRID */
+.d-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.d-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.panel{background:var(--s1);border:1px solid var(--b0);border-radius:10px;padding:14px 16px;}
+.panel-title{font-size:10px;font-weight:600;color:var(--tx3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+.stat{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--b0);font-size:12px;}
+.stat:last-child{border:none;}
+.stat-l{color:var(--tx2);}
+.stat-v{font-family:var(--mono);font-weight:600;}
+.h-bar{display:grid;grid-template-columns:100px 1fr 42px;align-items:center;gap:8px;margin-bottom:7px;}
+.h-bar:last-child{margin:0;}
+.hb-lbl{font-size:11px;color:var(--tx2);font-family:var(--mono);}
+.hb-track{background:var(--s3);border-radius:2px;height:5px;overflow:hidden;}
+.hb-fill{height:5px;border-radius:2px;transition:width .6s ease;}
+.hb-val{font-size:11px;font-family:var(--mono);color:var(--tx2);text-align:right;}
+.flow-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin:10px 0 5px;}
+.flow-c{background:var(--g);transition:flex .5s;}
+.flow-p{background:var(--r);transition:flex .5s;}
+.flow-labels{display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);}
+.ct{width:100%;border-collapse:collapse;font-size:11px;}
+.ct th{font-size:9px;color:var(--tx3);font-family:var(--mono);font-weight:600;padding:4px 7px 4px 0;border-bottom:1px solid var(--b0);text-align:left;letter-spacing:.04em;text-transform:uppercase;}
+.ct td{padding:7px 7px 7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono);vertical-align:middle;}
+.ct tr:last-child td{border:none;}
+.ct tr:hover td{background:rgba(255,255,255,.02);}
+.score-breakdown{display:flex;flex-direction:column;gap:9px;}
+.sb-item{display:flex;flex-direction:column;gap:3px;}
+.sb-hd{display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);color:var(--tx3);}
+.sb-track{background:var(--s3);border-radius:2px;height:4px;overflow:hidden;}
+.sb-fill{height:4px;border-radius:2px;transition:width .5s ease;}
+.action-box{margin-top:12px;background:var(--s3);border-radius:6px;padding:10px 12px;font-size:11px;color:var(--tx2);line-height:1.7;}
+.no-data{color:var(--tx3);font-size:12px;padding:24px 0;text-align:center;}
+
+/* TOAST */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:10px 14px;font-size:11px;font-family:var(--mono);z-index:200;transform:translateY(60px);transition:transform .22s;max-width:320px;line-height:1.5;}
+#toast.show{transform:translateY(0);}
+#toast.ok{border-color:rgba(0,212,154,.5);color:var(--g);}
+#toast.err{border-color:rgba(255,79,79,.5);color:var(--r);}
+#toast.warn{border-color:rgba(232,173,32,.4);color:var(--y);}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">ADR<em>scan</em></div>
+  <div class="vsep"></div>
+  <div class="form">
+    <input type="text" id="sym" placeholder="TICKER" maxlength="8" autocomplete="off"
+           oninput="this.value=this.value.toUpperCase()"
+           onkeydown="if(event.key==='Enter')doScan()">
+    <button class="scan-btn" id="scan-btn" onclick="doScan()">SCAN</button>
+  </div>
+  <div class="vsep"></div>
+  <div class="chip"><div class="led" id="mkt-led"></div><span id="mkt-txt">Market —</span></div>
+  <div class="chip"><div class="led" id="api-led"></div><span id="api-txt">No key</span></div>
+  <div class="key-group">
+    <span class="key-label">API KEY</span>
+    <input type="password" class="key-input" id="api-key"
+           placeholder="paste Massive key — persists all session"
+           oninput="onKeyInput()">
+  </div>
+  <div class="clock ml-auto" id="clock"></div>
+</div>
+
+<div class="prog-bar"><div class="prog-fill" id="prog"></div></div>
+
+<div class="body">
+
+  <div id="view-empty" class="empty-wrap">
+    <div class="empty-icon">◎</div>
+    <div class="empty-title">ADR Scan — single symbol analysis</div>
+    <div class="empty-desc">Paste your Massive API key once — it stays active for your whole browser session. Enter any U.S. equity or ETF and press SCAN.</div>
+    <div class="steps">
+      <div class="step"><div class="step-n">1</div><span class="step-t">Paste Massive API key in the KEY field (top right)</span></div>
+      <div class="step"><div class="step-n">2</div><span class="step-t">Type a symbol and press SCAN or hit Enter</span></div>
+      <div class="step"><div class="step-n">3</div><span class="step-t">3 API calls load — ADR, Vol/OI, IV, Compression, Net Flow</span></div>
+      <div class="step"><div class="step-n">4</div><span class="step-t">Type a new symbol anytime to replace the view</span></div>
+    </div>
+  </div>
+
+  <div id="view-loading" class="loading-wrap" style="display:none;">
+    <div class="spinner"></div>
+    <span id="load-txt">Loading…</span>
+  </div>
+
+  <div id="view-dash" class="dash">
+    <div class="head-card">
+      <div class="hc-left">
+        <div class="hc-sym" id="d-sym">—</div>
+        <div class="hc-meta" id="d-meta">—</div>
+        <div class="hc-badges">
+          <div class="eod-badge">◉ EOD BASELINE</div>
+          <div id="d-chain-badge" class="chain-badge" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="hc-right">
+        <div class="score-big" id="d-score">—</div>
+        <div class="score-sub">ADR coil score</div>
+        <div class="sig-badge" id="d-sig">—</div>
+      </div>
+    </div>
+
+    <div class="metric-row" id="d-metrics"></div>
+    <div class="d-grid-2" id="d-row1"></div>
+    <div class="d-grid-3" id="d-row2"></div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────
+// SERIAL QUEUE  — one request at a time, 420ms gap
+// No retries on 429. No automatic background calls.
+// Only 3 endpoints called:
+//   1. /v2/aggs/ticker/{sym}/range/1/day   → ADR
+//   2. /v2/aggs/ticker/{sym}/prev           → EOD bar
+//   3. /v3/snapshot/options/{sym}           → chain
+// ─────────────────────────────────────────────────
+const REQ_Q = [];
+let Q_RUNNING = false;
+
+function enqueue(fn) {
+  return new Promise((resolve, reject) => {
+    REQ_Q.push({ fn, resolve, reject });
+    if (!Q_RUNNING) processQueue();
+  });
+}
+
+async function processQueue() {
+  Q_RUNNING = true;
+  while (REQ_Q.length > 0) {
+    const { fn, resolve, reject } = REQ_Q.shift();
+    try {
+      resolve(await fn());
+    } catch (e) {
+      reject(e);
+    }
+    if (REQ_Q.length > 0) {
+      await new Promise(r => setTimeout(r, 420));
+    }
+  }
+  Q_RUNNING = false;
+}
+
+// ─────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────
+let API_KEY = '';
+let IS_SCANNING = false;
+let MKT_CHECKED = false;
+
+const el = id => document.getElementById(id);
+
+// Restore key from sessionStorage on load
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = sessionStorage.getItem('ADR_KEY');
+  if (saved && saved.length > 10) {
+    el('api-key').value = saved;
+    API_KEY = saved;
+    el('api-key').classList.add('active');
+    setLed('api-led', 'api-txt', 'on', 'Key active');
+  }
+});
+
+function onKeyInput() {
+  const v = el('api-key').value.trim();
+  API_KEY = v;
+  if (v.length > 10) {
+    el('api-key').classList.add('active');
+    setLed('api-led', 'api-txt', 'on', 'Key active');
+    sessionStorage.setItem('ADR_KEY', v);
+  } else {
+    el('api-key').classList.remove('active');
+    setLed('api-led', 'api-txt', 'err', 'No key');
+    sessionStorage.removeItem('ADR_KEY');
+  }
+}
+
+// Clock
+setInterval(() => {
+  el('clock').textContent = new Date().toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    timeZone: 'America/New_York'
+  }) + ' ET';
+}, 1000);
+
+function toast(msg, type) {
+  const t = el('toast');
+  t.textContent = msg;
+  t.className = 'show ' + (type || 'ok');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = ''; }, 4500);
+}
+
+function setLed(ledId, txtId, state, text) {
+  const led = el(ledId);
+  led.className = 'led' + (state === 'on' ? ' on' : state === 'busy' ? ' busy' : state === 'err' ? ' err' : '');
+  if (txtId) el(txtId).textContent = text;
+}
+
+function setProgress(pct) {
+  el('prog').style.width = pct + '%';
+}
+
+function showView(name) {
+  el('view-empty').style.display   = name === 'empty'   ? 'flex' : 'none';
+  el('view-loading').style.display = name === 'loading' ? 'flex' : 'none';
+  el('view-dash').style.display    = name === 'dash'    ? 'block' : 'none';
+}
+
+// ─────────────────────────────────────────────────
+// MASSIVE API  — fetch wrapper
+// ─────────────────────────────────────────────────
+const MASSIVE_BASE = 'https://api.massive.com';
+
+async function massiveFetch(path, params) {
+  return enqueue(async () => {
+    const url = new URL(MASSIVE_BASE + path);
+    url.searchParams.set('apiKey', API_KEY);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+    }
+    const res = await fetch(url.toString());
+    if (res.status === 429) throw new Error('RATE_LIMIT');
+    if (!res.ok) throw new Error('HTTP_' + res.status);
+    return res.json();
+  });
+}
+
+// ─────────────────────────────────────────────────
+// API CALLS — exactly 3, nothing else
+// ─────────────────────────────────────────────────
+
+async function apiDailyBars(sym) {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 34); // ~24 trading days
+  const fmt = d => d.toISOString().slice(0, 10);
+  const json = await massiveFetch(
+    '/v2/aggs/ticker/' + sym + '/range/1/day/' + fmt(from) + '/' + fmt(to),
+    { adjusted: 'true', sort: 'desc', limit: '28' }
+  );
+  return (json.results || []).map(b => ({
+    t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v
+  }));
+}
+
+async function apiPrevBar(sym) {
+  const json = await massiveFetch(
+    '/v2/aggs/ticker/' + sym + '/prev',
+    { adjusted: 'true' }
+  );
+  const r = (json.results || [])[0];
+  return r ? { t: r.t, o: r.o, h: r.h, l: r.l, c: r.c, v: r.v } : null;
+}
+
+async function apiChain(sym) {
+  // NO date filter — causes 400 after market hours
+  // Filter client-side after data arrives
+  const json = await massiveFetch(
+    '/v3/snapshot/options/' + sym,
+    { limit: '250', sort: 'volume', order: 'desc' }
+  );
+  if (!json.results || json.results.length === 0) return [];
+  return json.results.map(parseContract).filter(Boolean);
+}
+
+async function apiMarketStatus() {
+  const json = await massiveFetch('/v1/marketstatus/now');
+  return json.market === 'open';
+}
+
+function parseContract(r) {
+  if (!r) return null;
+  const det = r.details || {};
+  const grk = r.greeks || {};
+  const qt  = r.last_quote || {};
+  const trd = r.last_trade || {};
+  const und = r.underlying_asset || {};
+  const day = r.day || {};
+
+  const last = trd.price || (qt.ask && qt.bid ? (qt.ask + qt.bid) / 2 : null);
+  const exp  = det.expiration_date;
+  const dte  = exp ? Math.ceil((new Date(exp) - Date.now()) / 86400000) : null;
+  const voi  = (day.volume && r.open_interest)
+               ? parseFloat((day.volume / r.open_interest).toFixed(2)) : null;
+  const prem = (last && day.volume)
+               ? parseFloat((last * day.volume * 100).toFixed(0)) : null;
+  return {
+    ticker: r.ticker,
+    type:   det.contract_type,
+    strike: det.strike_price,
+    exp, dte, voi, prem,
+    iv:     r.implied_volatility,
+    vol:    day.volume,
+    oi:     r.open_interest,
+    delta:  grk.delta,
+    gamma:  grk.gamma,
+    theta:  grk.theta,
+    last,
+    bid:    qt.bid,
+    ask:    qt.ask,
+    up:     und.price,
+  };
+}
+
+// ─────────────────────────────────────────────────
+// METRICS COMPUTATION
+// ─────────────────────────────────────────────────
+
+function computeADR(bars, n) {
+  const sample = bars.slice(0, n || 20);
+  if (sample.length < 3) return null;
+  const ranges = sample.map(b => (b.h - b.l) / b.c * 100);
+  const avg = ranges.reduce((a, x) => a + x, 0) / ranges.length;
+  return parseFloat(avg.toFixed(2));
+}
+
+function computeCompression(prev, adrPct) {
+  if (!prev || !adrPct) return null;
+  const dayRange = (prev.h - prev.l) / prev.c * 100;
+  return parseFloat((dayRange / adrPct).toFixed(2));
+}
+
+function computeVolOI(chain) {
+  // Prefer 7-60 DTE contracts with meaningful volume
+  let pool = chain.filter(c => c.voi && c.vol >= 50 && c.dte != null && c.dte >= 0 && c.dte <= 60);
+  if (pool.length === 0) pool = chain.filter(c => c.voi && c.vol >= 20);
+  if (pool.length === 0) return null;
+  return pool.sort((a, b) => b.voi - a.voi)[0];
+}
+
+function computeIV(chain) {
+  let pool = chain.filter(c => c.iv && c.dte != null && c.dte >= 0 && c.dte <= 45);
+  if (pool.length === 0) pool = chain.filter(c => c.iv);
+  if (pool.length === 0) return null;
+  const vals = pool.map(c => c.iv).sort((a, b) => a - b);
+  const m = Math.floor(vals.length / 2);
+  const median = vals.length % 2 ? vals[m] : (vals[m - 1] + vals[m]) / 2;
+  return parseFloat((median * 100).toFixed(1));
+}
+
+function computeFlow(chain) {
+  let callPrem = 0, putPrem = 0, callVol = 0, putVol = 0;
+  chain.forEach(c => {
+    if (c.type === 'call') { callPrem += c.prem || 0; callVol += c.vol || 0; }
+    else                   { putPrem  += c.prem || 0; putVol  += c.vol || 0; }
+  });
+  const total = callPrem + putPrem;
+  if (!total) return null;
+  return {
+    callPct: parseFloat((callPrem / total * 100).toFixed(1)),
+    putPct:  parseFloat((putPrem  / total * 100).toFixed(1)),
+    callPrem, putPrem, callVol, putVol,
+    net:     callPrem - putPrem,
+    netM:    parseFloat(((callPrem - putPrem) / 1e6).toFixed(2)),
+    pcRatio: callVol > 0 ? parseFloat((putVol / callVol).toFixed(2)) : null,
+    bias:    callPrem > putPrem ? 'BULL' : 'BEAR',
+  };
+}
+
+function computeScore(adr, comp) {
+  if (!adr || comp == null) return null;
+  const aScore = Math.min(40, (adr / 8) * 40);
+  let   cScore = 0;
+  if      (comp <= 0.20) cScore = 30;
+  else if (comp <= 0.35) cScore = 26;
+  else if (comp <= 0.50) cScore = 20;
+  else if (comp <= 0.65) cScore = 12;
+  else if (comp <= 0.80) cScore = 5;
+  return { total: Math.min(100, Math.round(aScore + cScore)), aS: Math.round(aScore), cS: cScore };
+}
+
+function getSignal(adr, comp, score) {
+  const s = score ? score.total : 0;
+  if (adr >= 4 && comp <= 0.35 && s >= 76)
+    return { lbl: 'HOLY GRAIL COIL', cls: 'sig-hg', col: 'var(--p)', action: 'Enter small — Stealth Strike delta 0.05–0.15 on next ignition signal.' };
+  if (comp != null && comp >= 0.80)
+    return { lbl: 'MOVE EXPANDED',   cls: 'sig-ex', col: 'var(--r)', action: 'Do not chase. ADR already consumed. Wait for next session reset.' };
+  if (adr >= 3 && comp != null && comp <= 0.50)
+    return { lbl: 'WATCHLIST COIL',  cls: 'sig-wl', col: 'var(--b)', action: 'Good setup forming. Needs one more confluence signal to upgrade.' };
+  if (adr != null && adr < 2.5)
+    return { lbl: 'TOO LOW ADR',     cls: 'sig-bo', col: 'var(--tx3)', action: 'Stock lacks range for explosive options moves. Skip.' };
+  return   { lbl: 'BORDERLINE',      cls: 'sig-bd', col: 'var(--y)', action: 'Marginal setup. Needs catalyst or unusual volume spike to qualify.' };
+}
+
+// ─────────────────────────────────────────────────
+// MAIN SCAN
+// ─────────────────────────────────────────────────
+async function doScan() {
+  if (!API_KEY || API_KEY.length < 5) {
+    toast('Paste your Massive API key in the KEY field first', 'err');
+    return;
+  }
+  const sym = (el('sym').value || '').trim().toUpperCase();
+  if (!sym) { toast('Enter a symbol', 'err'); return; }
+  if (IS_SCANNING) { toast('Scan in progress — please wait', 'warn'); return; }
+
+  IS_SCANNING = true;
+  el('scan-btn').disabled = true;
+  showView('loading');
+  setProgress(0);
+  setLed('api-led', 'api-txt', 'busy', 'Scanning ' + sym + '…');
+
+  const result = { sym };
+
+  // ── Call 1: Daily bars (ADR) ────────────────
+  el('load-txt').textContent = sym + ' — fetching 20-day bars for ADR…';
+  setProgress(12);
+  try {
+    result.bars = await apiDailyBars(sym);
+    result.adr  = computeADR(result.bars, 20);
+  } catch (e) {
+    if (e.message === 'RATE_LIMIT') return onRateLimit();
+    result.adrErr = e.message;
+    toast('Daily bars error: ' + e.message, 'warn');
+  }
+  setProgress(36);
+
+  // ── Call 2: Prev bar (EOD price + compression) ─
+  el('load-txt').textContent = sym + ' — fetching previous day bar…';
+  try {
+    result.prev  = await apiPrevBar(sym);
+    result.price = result.prev ? result.prev.c : null;
+    result.comp  = computeCompression(result.prev, result.adr);
+  } catch (e) {
+    if (e.message === 'RATE_LIMIT') return onRateLimit();
+    result.prevErr = e.message;
+  }
+  setProgress(62);
+
+  // ── Call 3: Options chain ───────────────────
+  el('load-txt').textContent = sym + ' — fetching options chain…';
+  try {
+    const chain = await apiChain(sym);
+    result.chain = chain;
+    if (chain.length > 0) {
+      result.topVOI = computeVolOI(chain);
+      result.iv     = computeIV(chain);
+      result.flow   = computeFlow(chain);
+      result.chainOk = true;
+      result.topC = chain
+        .filter(c => c.dte != null && c.dte >= 0 && c.dte <= 90 && c.vol)
+        .sort((a, b) => (b.vol || 0) - (a.vol || 0))
+        .slice(0, 8);
+    } else {
+      result.chainErr = 'No contracts returned for this symbol';
+    }
+  } catch (e) {
+    if (e.message === 'RATE_LIMIT') return onRateLimit();
+    result.chainErr = e.message === 'HTTP_400'
+      ? 'Symbol may not have listed options (400)'
+      : e.message;
+  }
+  setProgress(90);
+
+  // ── Score + signal ─────────────────────────
+  result.score = computeScore(result.adr, result.comp);
+  result.sig   = getSignal(result.adr, result.comp, result.score);
+
+  // ── Market status (once only) ──────────────
+  if (!MKT_CHECKED) {
+    MKT_CHECKED = true;
+    try {
+      const open = await apiMarketStatus();
+      setLed('mkt-led', 'mkt-txt', open ? 'on' : 'err', 'Market ' + (open ? 'open' : 'closed'));
+    } catch (e) { /* silent */ }
+  }
+
+  setProgress(100);
+  renderDash(result);
+
+  IS_SCANNING = false;
+  el('scan-btn').disabled = false;
+  el('sym').select();
+  setLed('api-led', 'api-txt', 'on', 'OK');
+  setTimeout(() => setProgress(0), 800);
+
+  const msg = sym + (result.chainOk
+    ? ' — ' + result.chain.length + ' contracts loaded'
+    : ' — ' + (result.chainErr || 'chain unavailable'));
+  toast(msg, result.chainOk ? 'ok' : 'warn');
+}
+
+function onRateLimit() {
+  IS_SCANNING = false;
+  el('scan-btn').disabled = false;
+  showView('empty');
+  setProgress(0);
+  setLed('api-led', 'api-txt', 'err', 'Rate limited');
+  toast('Rate limit hit — wait about 60 seconds then try again', 'err');
+}
+
+// ─────────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────────
+const fmtPrem = n => {
+  if (!n) return '$0';
+  if (n >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  return '$' + (n / 1e3).toFixed(0) + 'K';
+};
+const f2 = n => (n != null) ? n.toFixed(2) : '—';
+const fPct = n => (n != null) ? n.toFixed(2) + '%' : '—';
+
+function renderDash(d) {
+  showView('dash');
+
+  const { sym, adr, comp, score, sig, price, prev, iv, flow, topVOI, chainErr, chainOk, bars } = d;
+
+  // Header
+  el('d-sym').textContent  = sym;
+  const prevChg = prev && bars && bars[1]
+    ? ((prev.c - bars[1].c) / bars[1].c * 100) : null;
+  el('d-meta').textContent = (price ? '$' + price.toFixed(2) : '—')
+    + (prevChg != null ? '  ·  ' + (prevChg >= 0 ? '+' : '') + prevChg.toFixed(2) + '% prev session' : '')
+    + '  ·  EOD baseline';
+
+  el('d-score').textContent = score ? score.total : '—';
+  el('d-score').style.color = sig.col;
+  el('d-sig').textContent   = sig.lbl;
+  el('d-sig').className     = 'sig-badge ' + sig.cls;
+
+  const badge = el('d-chain-badge');
+  if (chainOk) {
+    badge.style.display = 'inline-flex';
+    badge.className = 'chain-badge';
+    badge.textContent = '✓ ' + d.chain.length + ' contracts';
+  } else if (chainErr) {
+    badge.style.display = 'inline-flex';
+    badge.className = 'chain-badge err';
+    badge.textContent = '⚠ ' + (chainErr.length > 40 ? chainErr.slice(0, 40) + '…' : chainErr);
+  } else {
+    badge.style.display = 'none';
+  }
+
+  // Expansion left
+  const expLeft = (adr && comp != null && price)
+    ? Math.max(0, (adr / 100 * price) * (1 - comp)) : null;
+
+  // ── 5 METRIC CARDS ────────────────────────────
+  const voiRatio = topVOI ? topVOI.voi : null;
+  const metrics = [
+    {
+      label: 'ADR%',
+      val:   adr != null ? adr.toFixed(2) + '%' : '—',
+      sub:   adr ? (adr >= 4 ? 'explosive range' : adr >= 2.5 ? 'moderate range' : 'low range') : 'no data',
+      cls:   adr >= 4 ? 'hi-g' : adr >= 2.5 ? 'hi-y' : '',
+      vcls:  adr >= 4 ? 'c-g' : adr >= 2.5 ? 'c-y' : adr > 0 ? 'c-r' : '',
+      barW:  adr ? Math.min(100, adr / 10 * 100) : 0,
+      barC:  adr >= 4 ? 'var(--g)' : 'var(--y)',
+    },
+    {
+      label: 'Vol/OI',
+      val:   voiRatio != null ? voiRatio.toFixed(1) + '\u00D7' : '—',
+      sub:   voiRatio >= 10 ? 'EXTREME signal' : voiRatio >= 5 ? 'very high' : voiRatio >= 3 ? 'unusual' : voiRatio > 0 ? 'normal' : 'no chain',
+      cls:   voiRatio >= 3 ? 'hi-p' : '',
+      vcls:  voiRatio >= 10 ? 'c-p' : voiRatio >= 3 ? 'c-b' : '',
+      barW:  voiRatio ? Math.min(100, voiRatio / 15 * 100) : 0,
+      barC:  'var(--p)',
+    },
+    {
+      label: 'Compression',
+      val:   comp != null ? comp.toFixed(2) + '\u00D7' : '—',
+      sub:   comp != null ? (comp <= 0.35 ? 'tight coil \u25CE' : comp <= 0.50 ? 'moderate' : comp <= 0.80 ? 'partly used' : 'expanded') : 'no prev bar',
+      cls:   comp != null && comp <= 0.35 ? 'hi-g' : comp >= 0.80 ? 'hi-r' : '',
+      vcls:  comp != null && comp <= 0.35 ? 'c-g' : comp >= 0.80 ? 'c-r' : 'c-y',
+      barW:  comp ? Math.min(100, comp * 100) : 0,
+      barC:  comp != null && comp <= 0.35 ? 'var(--g)' : comp >= 0.80 ? 'var(--r)' : 'var(--y)',
+    },
+    {
+      label: 'IV%',
+      val:   iv != null ? iv.toFixed(1) + '%' : '—',
+      sub:   iv ? (iv > 80 ? 'extreme — crush risk' : iv > 50 ? 'elevated' : iv > 25 ? 'normal' : 'low') : 'no chain',
+      cls:   iv > 80 ? 'hi-r' : iv > 50 ? 'hi-y' : '',
+      vcls:  iv > 80 ? 'c-r' : iv > 50 ? 'c-y' : '',
+      barW:  iv ? Math.min(100, iv / 100 * 100) : 0,
+      barC:  iv > 80 ? 'var(--r)' : 'var(--y)',
+    },
+    {
+      label: 'Net Flow',
+      val:   flow ? flow.bias : '—',
+      sub:   flow ? (flow.callPct.toFixed(0) + '%C / ' + flow.putPct.toFixed(0) + '%P') : 'no chain',
+      cls:   flow && flow.bias === 'BULL' ? 'hi-g' : flow && flow.bias === 'BEAR' ? 'hi-r' : '',
+      vcls:  flow && flow.bias === 'BULL' ? 'c-g' : flow && flow.bias === 'BEAR' ? 'c-r' : '',
+      barW:  flow ? flow.callPct : 50,
+      barC:  'var(--g)',
+    },
+  ];
+
+  el('d-metrics').innerHTML = metrics.map(m =>
+    '<div class="mcard ' + m.cls + '">' +
+    '<div class="mc-lbl">' + m.label + '</div>' +
+    '<div class="mc-val ' + m.vcls + '">' + m.val + '</div>' +
+    '<div class="mc-sub">' + m.sub + '</div>' +
+    '<div class="mc-bar"><div class="mc-fill" style="width:' + (m.barW || 0).toFixed(1) + '%;background:' + m.barC + ';"></div></div>' +
+    '</div>'
+  ).join('');
+
+  // ── ROW 1: Score breakdown + Flow split ──────
+  const sc = score || { total: 0, aS: 0, cS: 0 };
+  const flowHTML = flow
+    ? '<div class="flow-bar"><div class="flow-c" style="flex:' + flow.callPct + ';"></div><div class="flow-p" style="flex:' + flow.putPct + ';"></div></div>' +
+      '<div class="flow-labels"><span style="color:var(--g);">Calls ' + flow.callPct.toFixed(1) + '%</span><span style="color:var(--r);">Puts ' + flow.putPct.toFixed(1) + '%</span></div>' +
+      '<div style="margin-top:12px;">' +
+      stat('Call premium', '<span class="c-g">' + fmtPrem(flow.callPrem) + '</span>') +
+      stat('Put premium',  '<span class="c-r">' + fmtPrem(flow.putPrem) + '</span>') +
+      stat('Net (C\u2212P)',  '<span class="' + (flow.netM >= 0 ? 'c-g' : 'c-r') + '">' + (flow.netM >= 0 ? '+' : '') + flow.netM.toFixed(2) + 'M</span>') +
+      stat('Put/Call vol', flow.pcRatio != null ? flow.pcRatio.toFixed(2) : '—') +
+      stat('Call volume',  (flow.callVol || 0).toLocaleString()) +
+      stat('Put volume',   (flow.putVol  || 0).toLocaleString()) +
+      stat('Bias signal',  '<span class="' + (flow.bias === 'BULL' ? 'c-g' : 'c-r') + '">' + flow.bias + '</span>') +
+      '</div>'
+    : '<div class="no-data">Options chain unavailable for this symbol</div>';
+
+  el('d-row1').innerHTML =
+    '<div class="panel">' +
+    '<div class="panel-title">Score breakdown <span style="color:' + sig.col + ';">' + sc.total + '/100</span></div>' +
+    '<div class="score-breakdown">' +
+    scoreBar('ADR magnitude', sc.aS, 40, sig.col) +
+    scoreBar('Compression',   sc.cS, 30, sig.col) +
+    scoreBar('Confluence (manual)', 0, 30, 'var(--tx3)') +
+    '</div>' +
+    '<div class="action-box">' + sig.action + '</div>' +
+    '<div style="margin-top:10px;">' +
+    stat('Expansion left', expLeft != null ? '<span class="c-g">$' + expLeft.toFixed(2) + '</span>' : '—') +
+    stat('ADR%', fPct(adr)) +
+    stat('Prev day range%', prev ? fPct((prev.h - prev.l) / prev.c * 100) : '—') +
+    stat('Prev close', price ? '$' + price.toFixed(2) : '—') +
+    stat('Prev volume', prev && prev.v ? prev.v.toLocaleString() : '—') +
+    '</div>' +
+    '</div>' +
+    '<div class="panel">' +
+    '<div class="panel-title">Flow split</div>' +
+    flowHTML +
+    '</div>';
+
+  // ── ROW 2: Top Vol/OI + Top contracts + ADR history ──
+  const tvHTML = topVOI
+    ? stat('Contract', (topVOI.type || '').toUpperCase() + ' $' + topVOI.strike) +
+      stat('Expiry / DTE', (topVOI.exp || '—') + ' \u00B7 ' + (topVOI.dte != null ? topVOI.dte : '—') + 'd') +
+      stat('Vol/OI ratio', '<span class="' + (topVOI.voi >= 3 ? 'c-p' : '') + '">' + topVOI.voi.toFixed(1) + '\u00D7</span>') +
+      stat('Volume', topVOI.vol ? topVOI.vol.toLocaleString() : '—') +
+      stat('Open interest', topVOI.oi ? topVOI.oi.toLocaleString() : '—') +
+      stat('IV', topVOI.iv ? '<span class="c-y">' + (topVOI.iv * 100).toFixed(1) + '%</span>' : '—') +
+      stat('Delta / Gamma', f2(topVOI.delta) + ' / ' + f2(topVOI.gamma)) +
+      stat('Last / Bid / Ask', f2(topVOI.last) + ' / ' + f2(topVOI.bid) + ' / ' + f2(topVOI.ask)) +
+      stat('Premium', '<span class="c-g">' + fmtPrem(topVOI.prem) + '</span>')
+    : '<div class="no-data">No unusual Vol/OI contract found</div>';
+
+  const tcHTML = (d.topC && d.topC.length > 0)
+    ? '<table class="ct"><thead><tr><th>Type</th><th>Strike</th><th>DTE</th><th>Volume</th><th>Vol/OI</th><th>IV</th><th>Delta</th></tr></thead><tbody>' +
+      d.topC.map(c =>
+        '<tr>' +
+        '<td style="color:' + (c.type === 'call' ? 'var(--g)' : 'var(--r)') + ';">' + (c.type || '').toUpperCase() + '</td>' +
+        '<td>$' + c.strike + '</td>' +
+        '<td>' + (c.dte != null ? c.dte : '—') + 'd</td>' +
+        '<td>' + (c.vol ? c.vol.toLocaleString() : '—') + '</td>' +
+        '<td class="' + ((c.voi || 0) >= 3 ? 'c-p' : '') + '">' + (c.voi ? c.voi.toFixed(1) : '—') + '\u00D7</td>' +
+        '<td class="c-y">' + (c.iv ? (c.iv * 100).toFixed(0) + '%' : '—') + '</td>' +
+        '<td>' + f2(c.delta) + '</td>' +
+        '</tr>'
+      ).join('') +
+      '</tbody></table>'
+    : '<div class="no-data">No contract data</div>';
+
+  // 10-day range bars
+  const recentBars = (bars || []).slice(0, 10).reverse();
+  const maxRange = Math.max.apply(null, recentBars.map(b => (b.h - b.l) / b.c * 100).concat([0.01]));
+  const histHTML = recentBars.length > 0
+    ? recentBars.map(b => {
+        const rng = parseFloat(((b.h - b.l) / b.c * 100).toFixed(2));
+        const w   = parseFloat((rng / maxRange * 100).toFixed(1));
+        const dt  = new Date(b.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const col = rng >= (adr || 0) ? 'var(--g)' : 'var(--b)';
+        return '<div class="h-bar">' +
+          '<div class="hb-lbl">' + dt + '</div>' +
+          '<div class="hb-track"><div class="hb-fill" style="width:' + w + '%;background:' + col + ';"></div></div>' +
+          '<div class="hb-val">' + rng.toFixed(2) + '%</div>' +
+          '</div>';
+      }).join('')
+    : '<div class="no-data">No bar data</div>';
+
+  const voiTag = topVOI && topVOI.voi >= 3
+    ? '<span class="sig-badge sig-hg" style="font-size:9px;padding:1px 6px;">UNUSUAL</span>' : '';
+
+  el('d-row2').innerHTML =
+    '<div class="panel">' +
+    '<div class="panel-title">Top Vol/OI contract ' + voiTag + '</div>' +
+    tvHTML + '</div>' +
+    '<div class="panel">' +
+    '<div class="panel-title">Top contracts by volume <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:0;">' + (d.chain ? d.chain.length + ' total' : '') + '</span></div>' +
+    tcHTML + '</div>' +
+    '<div class="panel">' +
+    '<div class="panel-title">10-day range history <span style="color:var(--tx3);font-weight:400;text-transform:none;letter-spacing:0;">ADR ' + fPct(adr) + '</span></div>' +
+    histHTML + '</div>';
+}
+
+// ─── Helpers for HTML generation ─────────────────
+function stat(label, value) {
+  return '<div class="stat"><span class="stat-l">' + label + '</span><span class="stat-v">' + value + '</span></div>';
+}
+
+function scoreBar(label, val, max, color) {
+  const pct = max > 0 ? (val / max * 100).toFixed(1) : '0';
+  return '<div class="sb-item">' +
+    '<div class="sb-hd"><span>' + label + '</span><span>' + val + '/' + max + '</span></div>' +
+    '<div class="sb-track"><div class="sb-fill" style="width:' + pct + '%;background:' + color + ';"></div></div>' +
+    '</div>';
+}
+</script>
+</body>
+</html>
