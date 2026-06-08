@@ -5,33 +5,41 @@
   <style>
     body { background:#08090c; color:white; font-family:Arial; padding:24px; }
     input, button { padding:10px; border-radius:8px; border:1px solid #333; }
-    input { width:420px; background:#11141b; color:white; }
-    button { background:#1f6feb; color:white; cursor:pointer; }
+    input { width:260px; background:#11141b; color:white; margin:4px; }
+    button { background:#1f6feb; color:white; cursor:pointer; margin:4px; }
     .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:20px; }
     .card { background:#12141a; border:1px solid #272b35; border-radius:14px; padding:18px; }
     .score { font-size:44px; font-weight:bold; }
     .muted { color:#9ca3af; }
+    .good { color:#35d07f; }
+    .warn { color:#f5c542; }
+    .bad { color:#ff5c5c; }
     pre { white-space:pre-wrap; color:#ff8080; }
   </style>
 </head>
+
 <body>
 
-<h1>API Upgrade: Massive Regime Dashboard</h1>
+<h1>Massive Regime Dashboard</h1>
 
 <div class="card">
-  <h2>Massive API Key</h2>
-  <input id="apiKeyInput" type="password" placeholder="Paste Massive API key here">
-  <button onclick="saveKeyAndRun()">Save & Run</button>
-  <button onclick="clearKey()">Clear Key</button>
-  <p id="status" class="muted">Waiting for API key...</p>
+  <h2>Inputs</h2>
+
+  <input id="apiKeyInput" type="password" placeholder="Paste Massive API key">
+  <input id="vixInput" type="number" step="0.01" placeholder="Manual VIX price">
+
+  <button onclick="saveAndRun()">Save & Run</button>
+  <button onclick="clearInputs()">Clear</button>
+
+  <p id="status" class="muted">Waiting...</p>
 </div>
 
 <div class="grid">
   <div class="card"><h2>Regime Card</h2><div id="regime">Waiting...</div></div>
-  <div class="card"><h2>VIX Proxy</h2><div id="vix">Waiting...</div></div>
+  <div class="card"><h2>Manual VIX</h2><div id="vix">Waiting...</div></div>
   <div class="card"><h2>SPY</h2><div id="spy">Waiting...</div></div>
   <div class="card"><h2>QQQ</h2><div id="qqq">Waiting...</div></div>
-  <div class="card"><h2>Gamma State</h2><div id="gamma">Paused to avoid rate limit</div></div>
+  <div class="card"><h2>IWM</h2><div id="iwm">Waiting...</div></div>
   <div class="card"><h2>Market Health Score</h2><div id="health" class="score">--</div></div>
 </div>
 
@@ -45,11 +53,13 @@
 
 <script>
 let API_KEY = localStorage.getItem("MASSIVE_API_KEY") || "";
+let MANUAL_VIX = localStorage.getItem("MANUAL_VIX") || "";
 
-const WATCHLIST = ["MU","NVDA","MRVL","QQQ","SPY","HIMS"];
-const DELAY_MS = 1300;
+const TICKERS = ["SPY", "QQQ", "IWM"];
+const DELAY_MS = 1400;
 
 document.getElementById("apiKeyInput").value = API_KEY;
+document.getElementById("vixInput").value = MANUAL_VIX;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -63,21 +73,37 @@ function setError(msg) {
   document.getElementById("errors").innerText = msg || "None";
 }
 
-function saveKeyAndRun() {
+function saveAndRun() {
   API_KEY = document.getElementById("apiKeyInput").value.trim();
+  MANUAL_VIX = document.getElementById("vixInput").value.trim();
+
   if (!API_KEY) {
     setStatus("Paste your Massive API key first.");
     return;
   }
+
+  if (!MANUAL_VIX) {
+    setStatus("Enter manual VIX price first.");
+    return;
+  }
+
   localStorage.setItem("MASSIVE_API_KEY", API_KEY);
+  localStorage.setItem("MANUAL_VIX", MANUAL_VIX);
+
   run();
 }
 
-function clearKey() {
+function clearInputs() {
   localStorage.removeItem("MASSIVE_API_KEY");
+  localStorage.removeItem("MANUAL_VIX");
+
   API_KEY = "";
+  MANUAL_VIX = "";
+
   document.getElementById("apiKeyInput").value = "";
-  setStatus("API key cleared.");
+  document.getElementById("vixInput").value = "";
+
+  setStatus("Inputs cleared.");
 }
 
 async function massive(url) {
@@ -104,31 +130,16 @@ async function getDaily(ticker) {
   );
 }
 
-/* Uses ETFs instead of I:VIX because indices require separate entitlement */
-async function getVixProxy() {
-  try {
-    const vixy = await getDaily("VIXY");
-    return { data: vixy, label: "VIXY Proxy" };
-  } catch (e1) {
-    const vxx = await getDaily("VXX");
-    return { data: vxx, label: "VXX Proxy" };
-  }
-}
-
-function adr20(bars) {
-  const recent = bars.slice(-20);
-  const ranges = recent.map(b => ((b.h - b.l) / b.c) * 100);
-  return ranges.reduce((a,b)=>a+b,0) / ranges.length;
-}
-
 function trendScore(bars) {
   if (!bars || bars.length < 21) return 50;
 
-  const close = bars[bars.length-1].c;
-  const c5 = bars[bars.length-6].c;
-  const c20 = bars[bars.length-21].c;
+  const last = bars[bars.length - 1];
+  const close = last.c;
+  const c5 = bars[bars.length - 6].c;
+  const c20 = bars[bars.length - 21].c;
 
   let score = 50;
+
   if (close > c5) score += 20;
   else score -= 15;
 
@@ -138,111 +149,120 @@ function trendScore(bars) {
   return Math.max(0, Math.min(100, score));
 }
 
-/* For VIXY/VXX proxy: lower = calmer / healthier */
-function vixScore(vixProxyPrice) {
-  if (vixProxyPrice < 12) return 90;
-  if (vixProxyPrice < 15) return 75;
-  if (vixProxyPrice < 20) return 50;
-  if (vixProxyPrice < 25) return 35;
-  return 20;
+function adr20(bars) {
+  if (!bars || bars.length < 20) return 0;
+
+  const recent = bars.slice(-20);
+  const ranges = recent.map(b => ((b.h - b.l) / b.c) * 100);
+
+  return ranges.reduce((a,b) => a + b, 0) / ranges.length;
 }
 
-async function scoreCandidate(ticker) {
-  const daily = await getDaily(ticker);
-  const bars = daily.results || [];
-  if (bars.length < 21) return null;
+function vixScore(vix) {
+  if (vix < 13) return 95;
+  if (vix < 16) return 85;
+  if (vix < 20) return 70;
+  if (vix < 25) return 45;
+  if (vix < 30) return 25;
+  return 10;
+}
 
-  const last = bars[bars.length-1];
+function regimeLabel(score, vix) {
+  if (score >= 80 && vix < 20) return "RISK ON / CALLS FAVORED";
+  if (score >= 65) return "SELECTIVE LONGS";
+  if (score >= 45) return "CHOP / WAIT FOR CONFIRMATION";
+  if (score >= 30) return "DEFENSIVE / REDUCE SIZE";
+  return "RISK OFF / PUTS FAVORED";
+}
+
+function scoreCandidate(ticker, bars) {
+  const last = bars[bars.length - 1];
   const adr = adr20(bars);
   const rangeToday = ((last.h - last.l) / last.c) * 100;
-  const compression = rangeToday / adr;
+  const compression = adr ? rangeToday / adr : 1;
   const dollarVol = last.c * last.v;
   const trend = trendScore(bars);
 
   let score = 0;
-  if (adr >= 4) score += 30;
-  if (compression <= 0.50) score += 30;
-  if (dollarVol >= 500000000) score += 20;
-  score += trend * 0.20;
+
+  if (adr >= 1.2) score += 20;
+  if (compression <= 0.65) score += 25;
+  if (dollarVol >= 1000000000) score += 25;
+
+  score += trend * 0.30;
 
   return {
     ticker,
     score: Math.round(score),
+    price: last.c.toFixed(2),
     adr: adr.toFixed(2),
     compression: compression.toFixed(2),
-    price: last.c.toFixed(2),
-    dollarVol: (dollarVol / 1000000000).toFixed(2)
+    dollarVol: (dollarVol / 1000000000).toFixed(2),
+    trend
   };
 }
 
 async function run() {
   try {
     setError("");
-    setStatus("Loading slowly to avoid Massive rate limit...");
+    setStatus("Loading SPY, QQQ, IWM only...");
 
-    const spy = await getDaily("SPY");
-    const qqq = await getDaily("QQQ");
-    const vixProxy = await getVixProxy();
+    const vix = parseFloat(MANUAL_VIX);
 
-    const spyBars = spy.results || [];
-    const qqqBars = qqq.results || [];
-    const vixBars = vixProxy.data.results || [];
+    const spyData = await getDaily("SPY");
+    const qqqData = await getDaily("QQQ");
+    const iwmData = await getDaily("IWM");
+
+    const spyBars = spyData.results || [];
+    const qqqBars = qqqData.results || [];
+    const iwmBars = iwmData.results || [];
 
     const spyTrend = trendScore(spyBars);
     const qqqTrend = trendScore(qqqBars);
-    const vixLast = vixBars[vixBars.length-1]?.c || 0;
-    const vixHealth = vixScore(vixLast);
-
-    const gammaScore = 50;
+    const iwmTrend = trendScore(iwmBars);
+    const vixHealth = vixScore(vix);
 
     const health = Math.round(
-      spyTrend * 0.35 +
-      qqqTrend * 0.35 +
-      vixHealth * 0.20 +
-      gammaScore * 0.10
+      spyTrend * 0.30 +
+      qqqTrend * 0.30 +
+      iwmTrend * 0.20 +
+      vixHealth * 0.20
     );
 
-    let regime = "CHOP / WAIT";
-    if (health >= 80) regime = "RISK ON";
-    else if (health >= 60) regime = "SELECTIVE LONGS";
-    else if (health <= 35) regime = "RISK OFF";
+    const regime = regimeLabel(health, vix);
 
     document.getElementById("spy").innerHTML = `Trend Score: ${spyTrend}/100`;
     document.getElementById("qqq").innerHTML = `Trend Score: ${qqqTrend}/100`;
-    document.getElementById("vix").innerHTML =
-      `${vixProxy.label}: ${vixLast.toFixed(2)} | Volatility Score: ${vixHealth}/100`;
-    document.getElementById("gamma").innerHTML = `NEUTRAL / PAUSED`;
+    document.getElementById("iwm").innerHTML = `Trend Score: ${iwmTrend}/100`;
+    document.getElementById("vix").innerHTML = `${vix.toFixed(2)} | VIX Score: ${vixHealth}/100`;
     document.getElementById("health").innerHTML = health;
     document.getElementById("regime").innerHTML = regime;
 
-    const scored = [];
-    for (const t of WATCHLIST) {
-      setStatus(`Scanning ${t} slowly...`);
-      const s = await scoreCandidate(t);
-      if (s) scored.push(s);
-    }
+    const candidates = [
+      scoreCandidate("SPY", spyBars),
+      scoreCandidate("QQQ", qqqBars),
+      scoreCandidate("IWM", iwmBars)
+    ].sort((a,b) => b.score - a.score);
 
-    scored.sort((a,b)=>b.score-a.score);
-    const top3 = scored.slice(0,3);
-
-    document.getElementById("candidates").innerHTML = top3.map((x,i)=>`
+    document.getElementById("candidates").innerHTML = candidates.map((x,i) => `
       <div class="card">
-        <h2>${i+1}. ${x.ticker} — ${x.score}/100</h2>
+        <h2>${i + 1}. ${x.ticker} — ${x.score}/100</h2>
         <p>Price: $${x.price}</p>
+        <p>Trend: ${x.trend}/100</p>
         <p>ADR20: ${x.adr}%</p>
         <p>Compression: ${x.compression}</p>
         <p>Dollar Vol: $${x.dollarVol}B</p>
       </div>
     `).join("");
 
-    setStatus("Dashboard loaded without index entitlement issue.");
+    setStatus("Dashboard loaded. No index/VIX API call used.");
   } catch (err) {
     setStatus("Failed to load. Check Error Log.");
     setError(err.message);
   }
 }
 
-if (API_KEY) {
+if (API_KEY && MANUAL_VIX) {
   run();
 }
 </script>
