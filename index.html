@@ -1,47 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Massive Regime Dashboard</title>
+  <title>Regime Dashboard</title>
   <style>
     body { background:#08090c; color:white; font-family:Arial; padding:24px; }
-    input, button { padding:10px; border-radius:8px; border:1px solid #333; }
-    input { width:260px; background:#11141b; color:white; margin:4px; }
-    button { background:#1f6feb; color:white; cursor:pointer; margin:4px; }
+    input, button { padding:10px; border-radius:8px; border:1px solid #333; margin:4px; }
+    input { background:#11141b; color:white; width:260px; }
+    button { background:#1f6feb; color:white; cursor:pointer; }
     .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:20px; }
     .card { background:#12141a; border:1px solid #272b35; border-radius:14px; padding:18px; }
-    .score { font-size:44px; font-weight:bold; }
-    .muted { color:#9ca3af; }
+    .score { font-size:52px; font-weight:bold; }
     .good { color:#35d07f; }
     .warn { color:#f5c542; }
     .bad { color:#ff5c5c; }
+    .muted { color:#9ca3af; }
     pre { white-space:pre-wrap; color:#ff8080; }
   </style>
 </head>
 
 <body>
 
-<h1>Massive Regime Dashboard v2</h1>
+<h1>Regime Dashboard</h1>
 
 <div class="card">
   <h2>Inputs</h2>
-  <input id="apiKeyInput" type="password" placeholder="Paste Massive API key">
-  <input id="vixInput" type="number" step="0.01" placeholder="Manual VIX price">
+  <input id="apiKeyInput" type="password" placeholder="Massive API key">
+  <input id="vixInput" type="number" step="0.01" placeholder="Manual VIX">
   <button onclick="saveAndRun()">Save & Run</button>
   <button onclick="clearInputs()">Clear</button>
   <p id="status" class="muted">Waiting...</p>
 </div>
 
 <div class="grid">
-  <div class="card"><h2>Regime Card</h2><div id="regime">Waiting...</div></div>
-  <div class="card"><h2>Manual VIX</h2><div id="vix">Waiting...</div></div>
-  <div class="card"><h2>Market Health Score</h2><div id="health" class="score">--</div></div>
+  <div class="card">
+    <h2>Regime Card</h2>
+    <div id="regime">Waiting...</div>
+  </div>
+
+  <div class="card">
+    <h2>Market Health Score</h2>
+    <div id="health" class="score">--</div>
+  </div>
+
+  <div class="card">
+    <h2>Manual VIX</h2>
+    <div id="vix">Waiting...</div>
+  </div>
 </div>
 
 <h2>Core Market Reads</h2>
-<div id="coreCards" class="grid"></div>
+<div id="core" class="grid"></div>
 
-<h2>Top 3 Candidates Only</h2>
-<div id="candidates" class="grid"></div>
+<h2>Top 3 Leadership</h2>
+<div id="leaders" class="grid"></div>
 
 <div class="card">
   <h2>Error Log</h2>
@@ -53,14 +64,9 @@ let API_KEY = localStorage.getItem("MASSIVE_API_KEY") || "";
 let MANUAL_VIX = localStorage.getItem("MANUAL_VIX") || "";
 
 const TICKERS = ["SPY", "QQQ", "IWM", "XLK", "SOXX"];
-const DELAY_MS = 1300;
 
 document.getElementById("apiKeyInput").value = API_KEY;
 document.getElementById("vixInput").value = MANUAL_VIX;
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
@@ -86,128 +92,82 @@ function saveAndRun() {
 function clearInputs() {
   localStorage.removeItem("MASSIVE_API_KEY");
   localStorage.removeItem("MANUAL_VIX");
+
   API_KEY = "";
   MANUAL_VIX = "";
+
   document.getElementById("apiKeyInput").value = "";
   document.getElementById("vixInput").value = "";
+
   setStatus("Inputs cleared.");
 }
 
-async function massive(url, delay = true) {
-  const joiner = url.includes("?") ? "&" : "?";
-  const fullUrl = `${url}${joiner}apiKey=${encodeURIComponent(API_KEY)}`;
+async function massiveSnapshot() {
+  const tickers = TICKERS.join(",");
+  const url =
+    `https://api.massive.com/v3/snapshot?ticker.any_of=${tickers}&apiKey=${encodeURIComponent(API_KEY)}`;
 
-  const r = await fetch(fullUrl);
+  const r = await fetch(url);
   const data = await r.json();
 
   if (!r.ok || data.status === "ERROR" || data.status === "NOT_AUTHORIZED") {
     throw new Error(JSON.stringify(data, null, 2));
   }
 
-  if (delay) await sleep(DELAY_MS);
   return data;
 }
 
-/* Real-time/current ticker data */
-async function getSnapshot() {
-  const tickers = TICKERS.join(",");
-  return await massive(
-    `https://api.massive.com/v3/snapshot?ticker.any_of=${tickers}`,
-    true
-  );
+function readSnapshot(item) {
+  const s = item.session || {};
+  const d = item.day || {};
+
+  const price =
+    s.close ||
+    s.price ||
+    d.close ||
+    item.value ||
+    0;
+
+  const changePercent =
+    s.change_percent ??
+    s.changePercent ??
+    item.todaysChangePerc ??
+    0;
+
+  const volume =
+    s.volume ||
+    d.volume ||
+    0;
+
+  const high =
+    s.high ||
+    d.high ||
+    0;
+
+  const low =
+    s.low ||
+    d.low ||
+    0;
+
+  return {
+    ticker: item.ticker,
+    price,
+    changePercent,
+    volume,
+    high,
+    low
+  };
 }
 
-/* Historical bars for trend + ADR */
-async function getDaily(ticker) {
-  const to = new Date().toISOString().slice(0,10);
-  const from = new Date(Date.now() - 70*86400000).toISOString().slice(0,10);
-
-  return await massive(
-    `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=70`,
-    true
-  );
-}
-
-function normalizeSnapshot(results) {
-  const map = {};
-
-  for (const r of results || []) {
-    const ticker = r.ticker;
-
-    const session = r.session || {};
-    const day = r.day || {};
-
-    const price =
-      session.close ||
-      session.price ||
-      day.close ||
-      r.value ||
-      0;
-
-    const open =
-      session.open ||
-      day.open ||
-      0;
-
-    const high =
-      session.high ||
-      day.high ||
-      0;
-
-    const low =
-      session.low ||
-      day.low ||
-      0;
-
-    const volume =
-      session.volume ||
-      day.volume ||
-      0;
-
-    const changePercent =
-      session.change_percent ||
-      session.changePercent ||
-      r.todaysChangePerc ||
-      0;
-
-    map[ticker] = {
-      ticker,
-      price,
-      open,
-      high,
-      low,
-      volume,
-      changePercent
-    };
-  }
-
-  return map;
-}
-
-function trendScore(bars) {
-  if (!bars || bars.length < 21) return 50;
-
-  const close = bars[bars.length - 1].c;
-  const c5 = bars[bars.length - 6].c;
-  const c20 = bars[bars.length - 21].c;
-
-  let score = 50;
-  if (close > c5) score += 20;
-  else score -= 15;
-
-  if (close > c20) score += 20;
-  else score -= 15;
-
-  return Math.max(0, Math.min(100, score));
-}
-
-function adr20(bars) {
-  if (!bars || bars.length < 20) return 0;
-
-  const recent = bars.slice(-20);
-  const ranges = recent.map(b => ((b.h - b.l) / b.c) * 100);
-
-  return ranges.reduce((a,b) => a + b, 0) / ranges.length;
+function percentScore(change) {
+  if (change >= 2.5) return 100;
+  if (change >= 1.5) return 90;
+  if (change >= 0.75) return 75;
+  if (change >= 0.25) return 60;
+  if (change > -0.25) return 50;
+  if (change > -0.75) return 40;
+  if (change > -1.5) return 25;
+  return 10;
 }
 
 function vixScore(vix) {
@@ -227,118 +187,77 @@ function regimeLabel(score, vix, leader) {
   return "RISK OFF / PUTS FAVORED";
 }
 
-function scoreCandidate(ticker, bars, snap) {
-  const last = bars[bars.length - 1];
-  const price = snap?.price || last.c;
-  const adr = adr20(bars);
-
-  const high = snap?.high || last.h;
-  const low = snap?.low || last.l;
-  const volume = snap?.volume || last.v;
-
-  const rangeToday = ((high - low) / price) * 100;
-  const compression = adr ? rangeToday / adr : 1;
-  const dollarVol = price * volume;
-  const trend = trendScore(bars);
-  const dayChange = snap?.changePercent || 0;
-
-  let score = 0;
-
-  if (adr >= 1.2) score += 15;
-  if (compression <= 0.75) score += 20;
-  if (dollarVol >= 1000000000) score += 20;
-  if (dayChange > 0) score += 15;
-  if (dayChange > 1) score += 10;
-
-  score += trend * 0.20;
-
-  return {
-    ticker,
-    score: Math.round(score),
-    price: price.toFixed(2),
-    change: dayChange.toFixed(2),
-    adr: adr.toFixed(2),
-    compression: compression.toFixed(2),
-    dollarVol: (dollarVol / 1000000000).toFixed(2),
-    trend
-  };
+function classForScore(score) {
+  if (score >= 75) return "good";
+  if (score >= 45) return "warn";
+  return "bad";
 }
 
 async function run() {
   try {
     setError("");
-    setStatus("Loading real-time snapshots + trend bars...");
+    setStatus("Loading one Massive snapshot call...");
 
     const vix = parseFloat(MANUAL_VIX);
+    const data = await massiveSnapshot();
 
-    const snapshotData = await getSnapshot();
-    const snapMap = normalizeSnapshot(snapshotData.results || []);
-
-    const dailyMap = {};
-
-    for (const ticker of TICKERS) {
-      setStatus(`Loading ${ticker} daily trend...`);
-      const data = await getDaily(ticker);
-      dailyMap[ticker] = data.results || [];
-    }
-
-    const reads = TICKERS.map(ticker =>
-      scoreCandidate(ticker, dailyMap[ticker], snapMap[ticker])
-    );
+    const reads = (data.results || [])
+      .map(readSnapshot)
+      .filter(x => TICKERS.includes(x.ticker))
+      .map(x => ({
+        ...x,
+        score: percentScore(x.changePercent),
+        dollarVol: x.price * x.volume
+      }));
 
     const byTicker = {};
-    reads.forEach(r => byTicker[r.ticker] = r);
+    reads.forEach(x => byTicker[x.ticker] = x);
 
     const vixHealth = vixScore(vix);
 
     const health = Math.round(
-      byTicker.SPY.score  * 0.20 +
-      byTicker.QQQ.score  * 0.25 +
-      byTicker.IWM.score  * 0.10 +
-      byTicker.XLK.score  * 0.15 +
-      byTicker.SOXX.score * 0.20 +
-      vixHealth          * 0.10
+      (byTicker.SPY?.score || 50)  * 0.20 +
+      (byTicker.QQQ?.score || 50)  * 0.25 +
+      (byTicker.IWM?.score || 50)  * 0.10 +
+      (byTicker.XLK?.score || 50)  * 0.20 +
+      (byTicker.SOXX?.score || 50) * 0.15 +
+      vixHealth                   * 0.10
     );
 
-    const leader = reads
-      .filter(x => ["QQQ","XLK","SOXX"].includes(x.ticker))
-      .sort((a,b) => b.score - a.score)[0].ticker;
+    const leaders = [...reads].sort((a,b) => b.score - a.score);
+    const leader = leaders[0]?.ticker || "NO";
 
-    const regime = regimeLabel(health, vix, leader);
+    document.getElementById("health").innerHTML =
+      `<span class="${classForScore(health)}">${health}</span>`;
+
+    document.getElementById("regime").innerHTML =
+      `<h3 class="${classForScore(health)}">${regimeLabel(health, vix, leader)}</h3>
+       <p class="muted">Weighted by SPY, QQQ, IWM, XLK, SOXX + manual VIX.</p>`;
 
     document.getElementById("vix").innerHTML =
       `${vix.toFixed(2)} | VIX Score: ${vixHealth}/100`;
 
-    document.getElementById("health").innerHTML = health;
-    document.getElementById("regime").innerHTML = regime;
-
-    document.getElementById("coreCards").innerHTML = reads.map(x => `
+    document.getElementById("core").innerHTML = reads.map(x => `
       <div class="card">
         <h2>${x.ticker}</h2>
-        <p>Current: $${x.price}</p>
-        <p>Day Change: ${x.change}%</p>
-        <p>Trend: ${x.trend}/100</p>
-        <p>ADR20: ${x.adr}%</p>
-        <p>Compression: ${x.compression}</p>
-        <p>Dollar Vol: $${x.dollarVol}B</p>
-        <h3>Score: ${x.score}/100</h3>
+        <p>Current: $${Number(x.price).toFixed(2)}</p>
+        <p>Day Change: <span class="${x.changePercent >= 0 ? "good" : "bad"}">${Number(x.changePercent).toFixed(2)}%</span></p>
+        <p>Score: ${x.score}/100</p>
+        <p>Volume: ${Number(x.volume).toLocaleString()}</p>
+        <p>Dollar Vol: $${(x.dollarVol / 1000000000).toFixed(2)}B</p>
       </div>
     `).join("");
 
-    const top3 = reads.sort((a,b) => b.score - a.score).slice(0,3);
-
-    document.getElementById("candidates").innerHTML = top3.map((x,i) => `
+    document.getElementById("leaders").innerHTML = leaders.slice(0,3).map((x,i) => `
       <div class="card">
-        <h2>${i + 1}. ${x.ticker} — ${x.score}/100</h2>
-        <p>Current: $${x.price}</p>
-        <p>Day Change: ${x.change}%</p>
-        <p>Trend: ${x.trend}/100</p>
-        <p>ADR20: ${x.adr}%</p>
-        <p>Compression: ${x.compression}</p>
+        <h2>${i + 1}. ${x.ticker}</h2>
+        <p>Score: ${x.score}/100</p>
+        <p>Change: ${Number(x.changePercent).toFixed(2)}%</p>
+        <p>Current: $${Number(x.price).toFixed(2)}</p>
       </div>
     `).join("");
 
-    setStatus("Dashboard loaded. API tickers: SPY, QQQ, IWM, XLK, SOXX. VIX manual.");
+    setStatus("Loaded successfully. Only 1 API request used.");
   } catch (err) {
     setStatus("Failed to load. Check Error Log.");
     setError(err.message);
