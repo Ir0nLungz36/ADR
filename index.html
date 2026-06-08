@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Massive Regime Dashboard</title>
+  <style>
+    body { background:#08090c; color:white; font-family:Arial; padding:24px; }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+    .card { background:#12141a; border:1px solid #272b35; border-radius:14px; padding:18px; }
+    .score { font-size:44px; font-weight:bold; }
+    .good { color:#35d07f; }
+    .warn { color:#f5c542; }
+    .bad { color:#ff5c5c; }
+  </style>
+</head>
+<body>
+
+<h1>API Upgrade: Massive Regime Dashboard</h1>
+
+<div class="grid">
+  <div class="card">
+    <h2>Regime Card</h2>
+    <div id="regime">Loading...</div>
+  </div>
+
+  <div class="card">
+    <h2>VIX</h2>
+    <div id="vix">Loading...</div>
+  </div>
+
+  <div class="card">
+    <h2>SPY</h2>
+    <div id="spy">Loading...</div>
+  </div>
+
+  <div class="card">
+    <h2>QQQ</h2>
+    <div id="qqq">Loading...</div>
+  </div>
+
+  <div class="card">
+    <h2>Gamma State</h2>
+    <div id="gamma">Loading...</div>
+  </div>
+
+  <div class="card">
+    <h2>Market Health Score</h2>
+    <div id="health" class="score">--</div>
+  </div>
+</div>
+
+<h2>Top 3 Candidates Only</h2>
+<div id="candidates"></div>
+
+<script>
+const API_KEY = "PASTE_YOUR_MASSIVE_KEY_HERE";
+const WATCHLIST = ["MU","NVDA","MRVL","QQQ","SPY","HIMS","SOFI","AMD","PLTR","META"];
+
+async function massive(url) {
+  const r = await fetch(url + `&apiKey=${API_KEY}`);
+  return await r.json();
+}
+
+async function getDaily(ticker) {
+  const to = new Date().toISOString().slice(0,10);
+  const from = new Date(Date.now() - 45*86400000).toISOString().slice(0,10);
+
+  return await massive(
+    `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=50`
+  );
+}
+
+function adr20(bars) {
+  const recent = bars.slice(-20);
+  const ranges = recent.map(b => ((b.h - b.l) / b.c) * 100);
+  return ranges.reduce((a,b)=>a+b,0) / ranges.length;
+}
+
+function trendScore(bars) {
+  const close = bars[bars.length-1].c;
+  const c5 = bars[bars.length-6]?.c || close;
+  const c20 = bars[bars.length-21]?.c || close;
+
+  let score = 50;
+  if (close > c5) score += 20;
+  if (close > c20) score += 20;
+  if (close < c5) score -= 15;
+  if (close < c20) score -= 15;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function getOptions(ticker) {
+  return await massive(
+    `https://api.massive.com/v3/snapshot/options/${ticker}?limit=250`
+  );
+}
+
+function gammaState(options) {
+  const contracts = options.results || [];
+  let netGamma = 0;
+
+  for (const c of contracts) {
+    const type = c.details?.contract_type;
+    const oi = c.open_interest || 0;
+    const gamma = c.greeks?.gamma || 0;
+
+    if (type === "call") netGamma += gamma * oi;
+    if (type === "put") netGamma -= gamma * oi;
+  }
+
+  if (netGamma > 0) return { label:"POSITIVE GAMMA / PINNED", score:75 };
+  if (netGamma < 0) return { label:"NEGATIVE GAMMA / EXPANSION", score:55 };
+  return { label:"NEUTRAL GAMMA", score:50 };
+}
+
+async function scoreCandidate(ticker) {
+  const daily = await getDaily(ticker);
+  const bars = daily.results || [];
+  if (bars.length < 20) return null;
+
+  const last = bars[bars.length-1];
+  const adr = adr20(bars);
+  const rangeToday = ((last.h - last.l) / last.c) * 100;
+  const compression = rangeToday / adr;
+  const dollarVol = last.c * last.v;
+  const trend = trendScore(bars);
+
+  let score = 0;
+  if (adr >= 4) score += 25;
+  if (compression <= 0.50) score += 25;
+  if (dollarVol >= 500000000) score += 25;
+  score += trend * 0.25;
+
+  return {
+    ticker,
+    score: Math.round(score),
+    adr: adr.toFixed(2),
+    compression: compression.toFixed(2),
+    price: last.c.toFixed(2)
+  };
+}
+
+async function run() {
+  const spy = await getDaily("SPY");
+  const qqq = await getDaily("QQQ");
+  const vix = await getDaily("I:VIX");
+
+  const spyBars = spy.results || [];
+  const qqqBars = qqq.results || [];
+  const vixBars = vix.results || [];
+
+  const spyScore = trendScore(spyBars);
+  const qqqScore = trendScore(qqqBars);
+  const vixLast = vixBars[vixBars.length-1]?.c || 0;
+
+  let vixScore = 50;
+  if (vixLast < 16) vixScore = 90;
+  else if (vixLast < 20) vixScore = 75;
+  else if (vixLast < 25) vixScore = 45;
+  else vixScore = 20;
+
+  const spyOptions = await getOptions("SPY");
+  const gamma = gammaState(spyOptions);
+
+  const health = Math.round(
+    spyScore * 0.30 +
+    qqqScore * 0.30 +
+    vixScore * 0.20 +
+    gamma.score * 0.20
+  );
+
+  document.getElementById("spy").innerHTML = `Trend Score: ${spyScore}/100`;
+  document.getElementById("qqq").innerHTML = `Trend Score: ${qqqScore}/100`;
+  document.getElementById("vix").innerHTML = `${vixLast.toFixed(2)} | Score: ${vixScore}/100`;
+  document.getElementById("gamma").innerHTML = gamma.label;
+  document.getElementById("health").innerHTML = health;
+
+  let regime = "CHOP / WAIT";
+  if (health >= 80) regime = "RISK ON";
+  else if (health >= 60) regime = "SELECTIVE LONGS";
+  else if (health <= 35) regime = "RISK OFF";
+
+  document.getElementById("regime").innerHTML = regime;
+
+  const scored = [];
+  for (const t of WATCHLIST) {
+    const s = await scoreCandidate(t);
+    if (s) scored.push(s);
+  }
+
+  scored.sort((a,b)=>b.score-a.score);
+  const top3 = scored.slice(0,3);
+
+  document.getElementById("candidates").innerHTML = top3.map((x,i)=>`
+    <div class="card">
+      <h2>${i+1}. ${x.ticker} — ${x.score}/100</h2>
+      <p>Price: $${x.price}</p>
+      <p>ADR20: ${x.adr}%</p>
+      <p>Compression: ${x.compression}</p>
+    </div>
+  `).join("");
+}
+
+run();
+</script>
+
+</body>
+</html>
