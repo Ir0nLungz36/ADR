@@ -4,68 +4,99 @@
   <title>Massive Regime Dashboard</title>
   <style>
     body { background:#08090c; color:white; font-family:Arial; padding:24px; }
-    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+    input, button { padding:10px; border-radius:8px; border:1px solid #333; }
+    input { width:420px; background:#11141b; color:white; }
+    button { background:#1f6feb; color:white; cursor:pointer; }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:20px; }
     .card { background:#12141a; border:1px solid #272b35; border-radius:14px; padding:18px; }
     .score { font-size:44px; font-weight:bold; }
+    .muted { color:#9ca3af; }
     .good { color:#35d07f; }
     .warn { color:#f5c542; }
     .bad { color:#ff5c5c; }
+    pre { white-space:pre-wrap; color:#ff8080; }
   </style>
 </head>
 <body>
 
 <h1>API Upgrade: Massive Regime Dashboard</h1>
 
+<div class="card">
+  <h2>Massive API Key</h2>
+  <input id="apiKeyInput" type="password" placeholder="Paste Massive API key here">
+  <button onclick="saveKeyAndRun()">Save & Run</button>
+  <button onclick="clearKey()">Clear Key</button>
+  <p id="status" class="muted">Waiting for API key...</p>
+</div>
+
 <div class="grid">
-  <div class="card">
-    <h2>Regime Card</h2>
-    <div id="regime">Loading...</div>
-  </div>
-
-  <div class="card">
-    <h2>VIX</h2>
-    <div id="vix">Loading...</div>
-  </div>
-
-  <div class="card">
-    <h2>SPY</h2>
-    <div id="spy">Loading...</div>
-  </div>
-
-  <div class="card">
-    <h2>QQQ</h2>
-    <div id="qqq">Loading...</div>
-  </div>
-
-  <div class="card">
-    <h2>Gamma State</h2>
-    <div id="gamma">Loading...</div>
-  </div>
-
-  <div class="card">
-    <h2>Market Health Score</h2>
-    <div id="health" class="score">--</div>
-  </div>
+  <div class="card"><h2>Regime Card</h2><div id="regime">Waiting...</div></div>
+  <div class="card"><h2>VIX</h2><div id="vix">Waiting...</div></div>
+  <div class="card"><h2>SPY</h2><div id="spy">Waiting...</div></div>
+  <div class="card"><h2>QQQ</h2><div id="qqq">Waiting...</div></div>
+  <div class="card"><h2>Gamma State</h2><div id="gamma">Waiting...</div></div>
+  <div class="card"><h2>Market Health Score</h2><div id="health" class="score">--</div></div>
 </div>
 
 <h2>Top 3 Candidates Only</h2>
-<div id="candidates"></div>
+<div id="candidates" class="grid"></div>
+
+<div class="card">
+  <h2>Error Log</h2>
+  <pre id="errors">None</pre>
+</div>
 
 <script>
-const API_KEY = "PASTE_YOUR_MASSIVE_KEY_HERE";
+let API_KEY = localStorage.getItem("MASSIVE_API_KEY") || "";
 const WATCHLIST = ["MU","NVDA","MRVL","QQQ","SPY","HIMS","SOFI","AMD","PLTR","META"];
 
+document.getElementById("apiKeyInput").value = API_KEY;
+
+function setStatus(msg) {
+  document.getElementById("status").innerText = msg;
+}
+
+function setError(msg) {
+  document.getElementById("errors").innerText = msg || "None";
+}
+
+function saveKeyAndRun() {
+  API_KEY = document.getElementById("apiKeyInput").value.trim();
+  if (!API_KEY) {
+    setStatus("Paste your Massive API key first.");
+    return;
+  }
+  localStorage.setItem("MASSIVE_API_KEY", API_KEY);
+  run();
+}
+
+function clearKey() {
+  localStorage.removeItem("MASSIVE_API_KEY");
+  API_KEY = "";
+  document.getElementById("apiKeyInput").value = "";
+  setStatus("API key cleared.");
+}
+
 async function massive(url) {
-  const r = await fetch(url + `&apiKey=${API_KEY}`);
-  return await r.json();
+  const joiner = url.includes("?") ? "&" : "?";
+  const fullUrl = `${url}${joiner}apiKey=${encodeURIComponent(API_KEY)}`;
+
+  const r = await fetch(fullUrl);
+  const data = await r.json();
+
+  if (!r.ok || data.status === "ERROR") {
+    throw new Error(JSON.stringify(data, null, 2));
+  }
+
+  return data;
 }
 
 async function getDaily(ticker) {
   const to = new Date().toISOString().slice(0,10);
-  const from = new Date(Date.now() - 45*86400000).toISOString().slice(0,10);
+  const from = new Date(Date.now() - 60*86400000).toISOString().slice(0,10);
 
   return await massive(
-    `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=50`
+    `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=60`
   );
 }
 
@@ -76,15 +107,19 @@ function adr20(bars) {
 }
 
 function trendScore(bars) {
+  if (!bars || bars.length < 21) return 50;
+
   const close = bars[bars.length-1].c;
-  const c5 = bars[bars.length-6]?.c || close;
-  const c20 = bars[bars.length-21]?.c || close;
+  const c5 = bars[bars.length-6].c;
+  const c20 = bars[bars.length-21].c;
 
   let score = 50;
   if (close > c5) score += 20;
+  else score -= 15;
+
   if (close > c20) score += 20;
-  if (close < c5) score -= 15;
-  if (close < c20) score -= 15;
+  else score -= 15;
+
   return Math.max(0, Math.min(100, score));
 }
 
@@ -115,7 +150,7 @@ function gammaState(options) {
 async function scoreCandidate(ticker) {
   const daily = await getDaily(ticker);
   const bars = daily.results || [];
-  if (bars.length < 20) return null;
+  if (bars.length < 21) return null;
 
   const last = bars[bars.length-1];
   const adr = adr20(bars);
@@ -135,72 +170,85 @@ async function scoreCandidate(ticker) {
     score: Math.round(score),
     adr: adr.toFixed(2),
     compression: compression.toFixed(2),
-    price: last.c.toFixed(2)
+    price: last.c.toFixed(2),
+    dollarVol: (dollarVol / 1000000000).toFixed(2)
   };
 }
 
 async function run() {
-  const spy = await getDaily("SPY");
-  const qqq = await getDaily("QQQ");
-  const vix = await getDaily("I:VIX");
+  try {
+    setError("");
+    setStatus("Loading Massive data...");
 
-  const spyBars = spy.results || [];
-  const qqqBars = qqq.results || [];
-  const vixBars = vix.results || [];
+    const spy = await getDaily("SPY");
+    const qqq = await getDaily("QQQ");
+    const vix = await getDaily("I:VIX");
 
-  const spyScore = trendScore(spyBars);
-  const qqqScore = trendScore(qqqBars);
-  const vixLast = vixBars[vixBars.length-1]?.c || 0;
+    const spyBars = spy.results || [];
+    const qqqBars = qqq.results || [];
+    const vixBars = vix.results || [];
 
-  let vixScore = 50;
-  if (vixLast < 16) vixScore = 90;
-  else if (vixLast < 20) vixScore = 75;
-  else if (vixLast < 25) vixScore = 45;
-  else vixScore = 20;
+    const spyScore = trendScore(spyBars);
+    const qqqScore = trendScore(qqqBars);
+    const vixLast = vixBars[vixBars.length-1]?.c || 0;
 
-  const spyOptions = await getOptions("SPY");
-  const gamma = gammaState(spyOptions);
+    let vixScore = 50;
+    if (vixLast < 16) vixScore = 90;
+    else if (vixLast < 20) vixScore = 75;
+    else if (vixLast < 25) vixScore = 45;
+    else vixScore = 20;
 
-  const health = Math.round(
-    spyScore * 0.30 +
-    qqqScore * 0.30 +
-    vixScore * 0.20 +
-    gamma.score * 0.20
-  );
+    const spyOptions = await getOptions("SPY");
+    const gamma = gammaState(spyOptions);
 
-  document.getElementById("spy").innerHTML = `Trend Score: ${spyScore}/100`;
-  document.getElementById("qqq").innerHTML = `Trend Score: ${qqqScore}/100`;
-  document.getElementById("vix").innerHTML = `${vixLast.toFixed(2)} | Score: ${vixScore}/100`;
-  document.getElementById("gamma").innerHTML = gamma.label;
-  document.getElementById("health").innerHTML = health;
+    const health = Math.round(
+      spyScore * 0.30 +
+      qqqScore * 0.30 +
+      vixScore * 0.20 +
+      gamma.score * 0.20
+    );
 
-  let regime = "CHOP / WAIT";
-  if (health >= 80) regime = "RISK ON";
-  else if (health >= 60) regime = "SELECTIVE LONGS";
-  else if (health <= 35) regime = "RISK OFF";
+    let regime = "CHOP / WAIT";
+    if (health >= 80) regime = "RISK ON";
+    else if (health >= 60) regime = "SELECTIVE LONGS";
+    else if (health <= 35) regime = "RISK OFF";
 
-  document.getElementById("regime").innerHTML = regime;
+    document.getElementById("spy").innerHTML = `Trend Score: ${spyScore}/100`;
+    document.getElementById("qqq").innerHTML = `Trend Score: ${qqqScore}/100`;
+    document.getElementById("vix").innerHTML = `${vixLast.toFixed(2)} | Score: ${vixScore}/100`;
+    document.getElementById("gamma").innerHTML = gamma.label;
+    document.getElementById("health").innerHTML = health;
+    document.getElementById("regime").innerHTML = regime;
 
-  const scored = [];
-  for (const t of WATCHLIST) {
-    const s = await scoreCandidate(t);
-    if (s) scored.push(s);
+    const scored = [];
+    for (const t of WATCHLIST) {
+      const s = await scoreCandidate(t);
+      if (s) scored.push(s);
+    }
+
+    scored.sort((a,b)=>b.score-a.score);
+    const top3 = scored.slice(0,3);
+
+    document.getElementById("candidates").innerHTML = top3.map((x,i)=>`
+      <div class="card">
+        <h2>${i+1}. ${x.ticker} — ${x.score}/100</h2>
+        <p>Price: $${x.price}</p>
+        <p>ADR20: ${x.adr}%</p>
+        <p>Compression: ${x.compression}</p>
+        <p>Dollar Vol: $${x.dollarVol}B</p>
+      </div>
+    `).join("");
+
+    setStatus("Dashboard loaded.");
+  } catch (err) {
+    setStatus("Failed to load. Check Error Log.");
+    setError(err.message);
   }
-
-  scored.sort((a,b)=>b.score-a.score);
-  const top3 = scored.slice(0,3);
-
-  document.getElementById("candidates").innerHTML = top3.map((x,i)=>`
-    <div class="card">
-      <h2>${i+1}. ${x.ticker} — ${x.score}/100</h2>
-      <p>Price: $${x.price}</p>
-      <p>ADR20: ${x.adr}%</p>
-      <p>Compression: ${x.compression}</p>
-    </div>
-  `).join("");
 }
 
-run();
+if (API_KEY) {
+  run();
+}
 </script>
 
 </body>
