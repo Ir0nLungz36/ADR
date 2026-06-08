@@ -105,7 +105,7 @@ function clearInputs() {
 async function massiveSnapshot() {
   const tickers = TICKERS.join(",");
   const url =
-    `https://api.massive.com/v3/snapshot?ticker.any_of=${tickers}&apiKey=${encodeURIComponent(API_KEY)}`;
+    `https://api.massive.com/v3/snapshot?ticker.any_of=${tickers}&market=stocks&apiKey=${encodeURIComponent(API_KEY)}`;
 
   const r = await fetch(url);
   const data = await r.json();
@@ -118,44 +118,60 @@ async function massiveSnapshot() {
 }
 
 function readSnapshot(item) {
-  const s = item.session || {};
-  const d = item.day || {};
+  const ticker = item.ticker || item.symbol;
 
   const price =
-    s.close ||
-    s.price ||
-    d.close ||
-    item.value ||
+    item.session?.price ??
+    item.session?.close ??
+    item.day?.c ??
+    item.day?.close ??
+    item.min?.c ??
+    item.prevDay?.c ??
     0;
 
-  const changePercent =
-    s.change_percent ??
-    s.changePercent ??
-    item.todaysChangePerc ??
+  const prevClose =
+    item.prevDay?.c ??
+    item.previousClose ??
     0;
+
+  let changePercent =
+    item.todaysChangePerc ??
+    item.session?.change_percent ??
+    item.session?.changePercent ??
+    0;
+
+  if (!changePercent && price && prevClose) {
+    changePercent = ((price - prevClose) / prevClose) * 100;
+  }
 
   const volume =
-    s.volume ||
-    d.volume ||
+    item.session?.volume ??
+    item.day?.v ??
+    item.day?.volume ??
+    item.min?.v ??
     0;
 
   const high =
-    s.high ||
-    d.high ||
+    item.day?.h ??
+    item.session?.high ??
+    item.min?.h ??
     0;
 
   const low =
-    s.low ||
-    d.low ||
+    item.day?.l ??
+    item.session?.low ??
+    item.min?.l ??
     0;
 
   return {
-    ticker: item.ticker,
+    ticker,
     price,
+    prevClose,
     changePercent,
     volume,
     high,
-    low
+    low,
+    dollarVol: price * volume
   };
 }
 
@@ -206,8 +222,7 @@ async function run() {
       .filter(x => TICKERS.includes(x.ticker))
       .map(x => ({
         ...x,
-        score: percentScore(x.changePercent),
-        dollarVol: x.price * x.volume
+        score: percentScore(Number(x.changePercent || 0))
       }));
 
     const byTicker = {};
@@ -232,7 +247,7 @@ async function run() {
 
     document.getElementById("regime").innerHTML =
       `<h3 class="${classForScore(health)}">${regimeLabel(health, vix, leader)}</h3>
-       <p class="muted">Weighted by SPY, QQQ, IWM, XLK, SOXX + manual VIX.</p>`;
+       <p class="muted">One API call: SPY, QQQ, IWM, XLK, SOXX + manual VIX.</p>`;
 
     document.getElementById("vix").innerHTML =
       `${vix.toFixed(2)} | VIX Score: ${vixHealth}/100`;
@@ -241,7 +256,9 @@ async function run() {
       <div class="card">
         <h2>${x.ticker}</h2>
         <p>Current: $${Number(x.price).toFixed(2)}</p>
+        <p>Prev Close: $${Number(x.prevClose).toFixed(2)}</p>
         <p>Day Change: <span class="${x.changePercent >= 0 ? "good" : "bad"}">${Number(x.changePercent).toFixed(2)}%</span></p>
+        <p>High / Low: $${Number(x.high).toFixed(2)} / $${Number(x.low).toFixed(2)}</p>
         <p>Score: ${x.score}/100</p>
         <p>Volume: ${Number(x.volume).toLocaleString()}</p>
         <p>Dollar Vol: $${(x.dollarVol / 1000000000).toFixed(2)}B</p>
