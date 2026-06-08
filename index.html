@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Regime Dashboard v4</title>
+  <title>Regime Dashboard v5</title>
   <style>
     body { background:#07080b; color:white; font-family:Arial; padding:24px; }
     input, button { padding:10px; border-radius:8px; border:1px solid #333; margin:4px; }
@@ -10,19 +10,19 @@
     .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:18px; }
     .hero { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
     .card { background:#12141a; border:1px solid #2b3140; border-radius:14px; padding:18px; }
+    .summary { background:#101820; border:1px solid #2e4057; border-radius:16px; padding:24px; font-size:18px; line-height:1.65; }
     .score { font-size:56px; font-weight:bold; }
     .good { color:#35d07f; }
     .warn { color:#f5c542; }
     .bad { color:#ff5c5c; }
     .muted { color:#9ca3af; }
-    .bigread { font-size:18px; line-height:1.6; }
     pre { white-space:pre-wrap; color:#ff8080; }
   </style>
 </head>
 
 <body>
 
-<h1>Regime Dashboard v4 — Institutional Classifier</h1>
+<h1>Regime Dashboard v5 — Regime Engine</h1>
 
 <div class="card">
   <h2>Inputs</h2>
@@ -39,8 +39,11 @@
   <div class="card"><h2>Manual VIX</h2><div id="vix">Waiting...</div></div>
 </div>
 
-<h2>Institutional Market Read</h2>
-<div id="marketRead" class="card bigread">Waiting...</div>
+<h2>Regime Engine Summary</h2>
+<div id="engineSummary" class="summary">Waiting...</div>
+
+<h2>Institutional Flow Map</h2>
+<div id="flowMap" class="grid"></div>
 
 <h2>Top 3 Leadership — Dynamic</h2>
 <div id="leaders" class="grid"></div>
@@ -94,6 +97,23 @@ const NAMES = {
   TLT:"20+ Year Treasury Bonds",
   UUP:"US Dollar Proxy"
 };
+
+const WEIGHTED_BREADTH_WEIGHTS = {
+  XLK:25,
+  XLY:15,
+  XLF:15,
+  XLI:10,
+  XLV:10,
+  XLE:10,
+  XLC:5,
+  XLP:4,
+  XLB:3,
+  XLRE:2,
+  XLU:1
+};
+
+const OFFENSE = ["XLK", "XLY", "SOXX", "QQQ", "IWM"];
+const DEFENSE = ["XLU", "XLP", "XLV", "TLT"];
 
 document.getElementById("apiKeyInput").value = API_KEY;
 document.getElementById("vixInput").value = MANUAL_VIX;
@@ -184,6 +204,11 @@ function cls(score) {
   return "bad";
 }
 
+function formatTime(t) {
+  if (!t) return "N/A";
+  return new Date(t * 1000).toLocaleTimeString();
+}
+
 function volatilityLabel(vix) {
   if (vix < 16) return "LOW / CALM";
   if (vix < 20) return "MODERATE / WATCHFUL";
@@ -191,36 +216,56 @@ function volatilityLabel(vix) {
   return "HIGH RISK";
 }
 
-function breadthScore(sectorReads) {
-  const green = sectorReads.filter(x => x.changePercent > 0).length;
-  return Math.round((green / sectorReads.length) * 100);
+/* Upgrade #1: Weighted Breadth */
+function weightedBreadthScore(byTicker) {
+  let totalWeight = 0;
+  let earned = 0;
+
+  for (const [ticker, weight] of Object.entries(WEIGHTED_BREADTH_WEIGHTS)) {
+    totalWeight += weight;
+    const change = byTicker[ticker]?.changePercent || 0;
+
+    if (change > 0.75) earned += weight;
+    else if (change > 0.25) earned += weight * 0.75;
+    else if (change > 0) earned += weight * 0.50;
+    else if (change > -0.25) earned += weight * 0.25;
+  }
+
+  return Math.round((earned / totalWeight) * 100);
 }
 
-function breadthLabel(score) {
-  if (score >= 75) return "BROAD POSITIVE";
-  if (score >= 55) return "MIXED POSITIVE";
-  if (score >= 40) return "NARROW / SELECTIVE";
+function weightedBreadthLabel(score) {
+  if (score >= 75) return "BROAD / OFFENSIVE";
+  if (score >= 60) return "HEALTHY SELECTIVE";
+  if (score >= 45) return "NARROW / SELECTIVE";
+  if (score >= 30) return "FRAGILE";
   return "NEGATIVE";
 }
 
-function participationClassifier(sectorReads, topLeadership) {
-  const green = sectorReads.filter(x => x.changePercent > 0).length;
-  const top = topLeadership[0]?.changePercent || 0;
-  const median = [...sectorReads].sort((a,b) => a.changePercent - b.changePercent)[Math.floor(sectorReads.length / 2)]?.changePercent || 0;
-  const spread = top - median;
+/* Upgrade #2: Offense vs Defense Score */
+function groupScore(tickers, byTicker) {
+  const scores = tickers
+    .map(t => byTicker[t])
+    .filter(Boolean)
+    .map(x => percentScore(x.changePercent));
 
-  if (green >= 8 && spread < 1.5) return "BROAD PARTICIPATION";
-  if (green >= 6 && spread < 2.5) return "HEALTHY PARTICIPATION";
-  if (green >= 4 && spread >= 2.5) return "NARROW LEADERSHIP";
-  if (green <= 4) return "FRAGILE / CONCENTRATED";
-  return "MIXED PARTICIPATION";
+  if (!scores.length) return 50;
+  return Math.round(scores.reduce((a,b) => a + b, 0) / scores.length);
+}
+
+function offenseDefenseLabel(offenseScore, defenseScore) {
+  if (offenseScore >= 75 && offenseScore - defenseScore >= 20) return "RISK ON / OFFENSE IN CONTROL";
+  if (offenseScore >= 60 && offenseScore > defenseScore) return "OFFENSE LEADING";
+  if (defenseScore >= 65 && defenseScore > offenseScore) return "DEFENSIVE ROTATION";
+  if (offenseScore < 45 && defenseScore < 45) return "BROAD WEAKNESS";
+  return "MIXED";
 }
 
 function leadershipLabel(byTicker) {
   const soxx = byTicker.SOXX?.changePercent || 0;
   const xlk = byTicker.XLK?.changePercent || 0;
   const spy = byTicker.SPY?.changePercent || 0;
-  const qqq = byTicker.QQQ?.changePercent || 0;
+  const qqq = byTicker.QQq?.changePercent || byTicker.QQQ?.changePercent || 0;
   const iwm = byTicker.IWM?.changePercent || 0;
   const xlf = byTicker.XLF?.changePercent || 0;
   const xle = byTicker.XLE?.changePercent || 0;
@@ -231,6 +276,14 @@ function leadershipLabel(byTicker) {
   if (xlf > spy && xlf > qqq) return "FINANCIAL LEADERSHIP";
   if (xle > spy && xle > qqq) return "ENERGY LEADERSHIP";
   return "BROAD MARKET LEADERSHIP";
+}
+
+function participationClassifier(weightedBreadth, offenseScore, defenseScore) {
+  if (weightedBreadth >= 75 && offenseScore > defenseScore) return "BROAD OFFENSIVE PARTICIPATION";
+  if (weightedBreadth >= 60 && offenseScore > defenseScore) return "HEALTHY SELECTIVE PARTICIPATION";
+  if (offenseScore >= 70 && weightedBreadth < 60) return "NARROW OFFENSIVE LEADERSHIP";
+  if (defenseScore > offenseScore) return "DEFENSIVE PARTICIPATION";
+  return "MIXED / SELECTIVE";
 }
 
 function creditLabel(hyg) {
@@ -255,24 +308,47 @@ function dollarLabel(uup) {
   return "NEUTRAL";
 }
 
-function regimeLabel(score, vix, leadership, participation) {
+function regimeLabel(score, vix, leadership) {
   if (score >= 80 && vix < 20) return `RISK ON / ${leadership}`;
   if (score >= 65) return `SELECTIVE LONGS / ${leadership}`;
-  if (score >= 45 && participation.includes("NARROW")) return "SELECTIVE / NARROW LEADERSHIP";
-  if (score >= 45) return "CHOP / WAIT FOR CONFIRMATION";
+  if (score >= 45) return "CHOP / SELECTIVE ONLY";
   if (score >= 30) return "DEFENSIVE / REDUCE SIZE";
   return "RISK OFF / PUTS FAVORED";
 }
 
-function formatTime(t) {
-  if (!t) return "N/A";
-  return new Date(t * 1000).toLocaleTimeString();
+function riskAppetiteLabel(health, offenseScore, vix) {
+  if (health >= 80 && offenseScore >= 75 && vix < 20) return "HIGH";
+  if (health >= 65 && offenseScore >= 60) return "MODERATE-HIGH";
+  if (health >= 45) return "NEUTRAL";
+  return "LOW";
+}
+
+function flowBucketTitle(ticker) {
+  if (["XLK","SOXX","QQQ","XLY","IWM"].includes(ticker)) return "Growth / Offense";
+  if (["XLE","XLF","XLI"].includes(ticker)) return "Cyclical / Liquidity";
+  if (["XLU","XLP","XLV","TLT"].includes(ticker)) return "Defense / Safety";
+  return "Market";
+}
+
+/* Upgrade #4: Institutional Flow Map */
+function buildFlowMap(scored) {
+  const inflow = [...scored]
+    .filter(x => x.changePercent > 0)
+    .sort((a,b) => b.changePercent - a.changePercent)
+    .slice(0,5);
+
+  const outflow = [...scored]
+    .filter(x => x.changePercent < 0)
+    .sort((a,b) => a.changePercent - b.changePercent)
+    .slice(0,5);
+
+  return { inflow, outflow };
 }
 
 async function run() {
   try {
     setError("");
-    setStatus("Loading institutional regime data...");
+    setStatus("Loading Regime Engine v5...");
 
     const vix = parseFloat(MANUAL_VIX);
     const raw = await loadQuotes();
@@ -289,15 +365,14 @@ async function run() {
     const coreReads = scored.filter(x => CORE.includes(x.ticker));
     const macroReads = scored.filter(x => MACRO.includes(x.ticker));
 
-    const topDynamic = [...scored]
-      .filter(x => ["SOXX", "QQQ", "XLK", "SPY", "IWM", ...SECTORS].includes(x.ticker))
-      .sort((a,b) => b.changePercent - a.changePercent)
-      .slice(0,3);
+    const weightedBreadth = weightedBreadthScore(byTicker);
+    const offenseScore = groupScore(OFFENSE, byTicker);
+    const defenseScore = groupScore(DEFENSE, byTicker);
 
-    const sectorBreadth = breadthScore(sectorReads);
-    const participation = participationClassifier(sectorReads, topDynamic);
     const vixHealth = vixScore(vix);
     const leadership = leadershipLabel(byTicker);
+    const participation = participationClassifier(weightedBreadth, offenseScore, defenseScore);
+    const offenseDefense = offenseDefenseLabel(offenseScore, defenseScore);
 
     const credit = creditLabel(byTicker.HYG);
     const bonds = bondsLabel(byTicker.TLT);
@@ -313,45 +388,88 @@ async function run() {
     macroScore = Math.max(0, Math.min(100, macroScore));
 
     const health = Math.round(
-      (byTicker.SPY?.score || 50)  * 0.13 +
-      (byTicker.QQQ?.score || 50)  * 0.17 +
-      (byTicker.IWM?.score || 50)  * 0.07 +
-      (byTicker.SOXX?.score || 50) * 0.15 +
-      sectorBreadth                * 0.15 +
-      vixHealth                    * 0.18 +
-      macroScore                   * 0.15
+      (byTicker.SPY?.score || 50)  * 0.10 +
+      (byTicker.QQQ?.score || 50)  * 0.14 +
+      (byTicker.IWM?.score || 50)  * 0.06 +
+      (byTicker.SOXX?.score || 50) * 0.12 +
+      weightedBreadth              * 0.20 +
+      offenseScore                 * 0.16 +
+      vixHealth                    * 0.12 +
+      macroScore                   * 0.10
     );
 
-    const regime = regimeLabel(health, vix, leadership, participation);
+    const regime = regimeLabel(health, vix, leadership);
+
+    const topDynamic = [...scored]
+      .filter(x => ["SOXX", "QQQ", "XLK", "SPY", "IWM", ...SECTORS].includes(x.ticker))
+      .sort((a,b) => b.changePercent - a.changePercent)
+      .slice(0,3);
 
     const strongestSectors = [...sectorReads].sort((a,b) => b.changePercent - a.changePercent).slice(0,5);
     const weakestSectors = [...sectorReads].sort((a,b) => a.changePercent - b.changePercent).slice(0,5);
+    const flow = buildFlowMap([...sectorReads, ...coreReads, ...macroReads]);
 
     document.getElementById("health").innerHTML =
       `<span class="${cls(health)}">${health}</span>`;
 
     document.getElementById("regime").innerHTML =
       `<h3 class="${cls(health)}">${regime}</h3>
-       <p class="muted">Dynamic leadership + all sectors + macro filters.</p>`;
+       <p class="muted">Weighted breadth + offense/defense + flow map.</p>`;
 
     document.getElementById("vix").innerHTML =
       `${vix.toFixed(2)} | VIX Score: ${vixHealth}/100<br>
        <span class="muted">${volatilityLabel(vix)}</span>`;
 
-    document.getElementById("marketRead").innerHTML = `
+    document.getElementById("engineSummary").innerHTML = `
       <h2>MARKET HEALTH: <span class="${cls(health)}">${health}</span></h2>
       <p><strong>REGIME:</strong> ${regime}</p>
       <p><strong>LEADERSHIP:</strong> ${leadership}</p>
       <p><strong>PARTICIPATION:</strong> ${participation}</p>
-      <p><strong>SECTOR BREADTH:</strong> ${breadthLabel(sectorBreadth)} — ${sectorBreadth}/100</p>
+      <p><strong>WEIGHTED BREADTH:</strong> ${weightedBreadthLabel(weightedBreadth)} — ${weightedBreadth}/100</p>
+      <p><strong>OFFENSE:</strong> ${offenseScore}/100</p>
+      <p><strong>DEFENSE:</strong> ${defenseScore}/100</p>
+      <p><strong>OFFENSE / DEFENSE:</strong> ${offenseDefense}</p>
       <p><strong>VOLATILITY:</strong> ${volatilityLabel(vix)}</p>
       <p><strong>CREDIT:</strong> ${credit}</p>
       <p><strong>BONDS:</strong> ${bonds}</p>
       <p><strong>DOLLAR:</strong> ${dollar}</p>
-      <p><strong>RISK APPETITE:</strong> ${health >= 80 ? "HIGH" : health >= 65 ? "MODERATE-HIGH" : health >= 45 ? "NEUTRAL" : "LOW"}</p>
+      <p><strong>RISK APPETITE:</strong> ${riskAppetiteLabel(health, offenseScore, vix)}</p>
       <p><strong>BEST VEHICLES:</strong> ${topDynamic.map(x => x.ticker).join(" / ")}</p>
-      <p><strong>STRONGEST SECTORS:</strong> ${strongestSectors.map(x => `${x.ticker} ${x.changePercent.toFixed(2)}%`).join(" / ")}</p>
-      <p><strong>WEAKEST SECTORS:</strong> ${weakestSectors.map(x => `${x.ticker} ${x.changePercent.toFixed(2)}%`).join(" / ")}</p>
+      <p><strong>TRADEABLE REGIME:</strong>
+        ${health >= 65 && offenseScore > defenseScore ? "CALLS PREFERRED / MOMENTUM LONGS / TECH & SEMIS" :
+          health >= 45 ? "SELECTIVE ONLY / WAIT FOR CONFIRMATION" :
+          "DEFENSIVE / AVOID FORCED TRADES"}
+      </p>
+    `;
+
+    document.getElementById("flowMap").innerHTML = `
+      <div class="card">
+        <h2>MONEY FLOWING INTO</h2>
+        ${flow.inflow.map(x => `
+          <p>✔ ${x.ticker} — ${x.name}: <span class="good">${x.changePercent.toFixed(2)}%</span></p>
+        `).join("")}
+      </div>
+
+      <div class="card">
+        <h2>MONEY FLOWING OUT OF</h2>
+        ${flow.outflow.map(x => `
+          <p>✖ ${x.ticker} — ${x.name}: <span class="bad">${x.changePercent.toFixed(2)}%</span></p>
+        `).join("") || "<p>None</p>"}
+      </div>
+
+      <div class="card">
+        <h2>STRONGEST SECTORS</h2>
+        ${strongestSectors.map(x => `
+          <p>${x.ticker} — ${x.name}: <span class="${x.changePercent >= 0 ? "good" : "bad"}">${x.changePercent.toFixed(2)}%</span></p>
+        `).join("")}
+      </div>
+
+      <div class="card">
+        <h2>WEAKEST SECTORS</h2>
+        ${weakestSectors.map(x => `
+          <p>${x.ticker} — ${x.name}: <span class="${x.changePercent >= 0 ? "good" : "bad"}">${x.changePercent.toFixed(2)}%</span></p>
+        `).join("")}
+      </div>
     `;
 
     document.getElementById("leaders").innerHTML = topDynamic.map((x,i) => `
@@ -360,6 +478,7 @@ async function run() {
         <p>${x.name}</p>
         <p class="${x.changePercent >= 0 ? "good" : "bad"}">${x.changePercent.toFixed(2)}%</p>
         <p>Score: ${x.score}/100</p>
+        <p>${flowBucketTitle(x.ticker)}</p>
         <p class="muted">Dynamic intraday leader</p>
       </div>
     `).join("");
@@ -401,7 +520,7 @@ async function run() {
       </div>
     `).join("");
 
-    setStatus("Loaded Regime Dashboard v4 with dynamic leadership classifier.");
+    setStatus("Loaded Regime Dashboard v5.");
   } catch (err) {
     setStatus("Failed to load. Check Error Log.");
     setError(err.message);
