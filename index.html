@@ -28,7 +28,7 @@
 
 <div class="grid">
   <div class="card"><h2>Regime Card</h2><div id="regime">Waiting...</div></div>
-  <div class="card"><h2>VIX</h2><div id="vix">Waiting...</div></div>
+  <div class="card"><h2>VIX Proxy</h2><div id="vix">Waiting...</div></div>
   <div class="card"><h2>SPY</h2><div id="spy">Waiting...</div></div>
   <div class="card"><h2>QQQ</h2><div id="qqq">Waiting...</div></div>
   <div class="card"><h2>Gamma State</h2><div id="gamma">Paused to avoid rate limit</div></div>
@@ -46,12 +46,7 @@
 <script>
 let API_KEY = localStorage.getItem("MASSIVE_API_KEY") || "";
 
-/*
-  Keep this lean.
-  More tickers = more API calls = rate limit.
-*/
 const WATCHLIST = ["MU","NVDA","MRVL","QQQ","SPY","HIMS"];
-
 const DELAY_MS = 1300;
 
 document.getElementById("apiKeyInput").value = API_KEY;
@@ -92,7 +87,7 @@ async function massive(url) {
   const r = await fetch(fullUrl);
   const data = await r.json();
 
-  if (!r.ok || data.status === "ERROR") {
+  if (!r.ok || data.status === "ERROR" || data.status === "NOT_AUTHORIZED") {
     throw new Error(JSON.stringify(data, null, 2));
   }
 
@@ -107,6 +102,17 @@ async function getDaily(ticker) {
   return await massive(
     `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=70`
   );
+}
+
+/* Uses ETFs instead of I:VIX because indices require separate entitlement */
+async function getVixProxy() {
+  try {
+    const vixy = await getDaily("VIXY");
+    return { data: vixy, label: "VIXY Proxy" };
+  } catch (e1) {
+    const vxx = await getDaily("VXX");
+    return { data: vxx, label: "VXX Proxy" };
+  }
 }
 
 function adr20(bars) {
@@ -132,10 +138,12 @@ function trendScore(bars) {
   return Math.max(0, Math.min(100, score));
 }
 
-function vixScore(vixLast) {
-  if (vixLast < 16) return 90;
-  if (vixLast < 20) return 75;
-  if (vixLast < 25) return 45;
+/* For VIXY/VXX proxy: lower = calmer / healthier */
+function vixScore(vixProxyPrice) {
+  if (vixProxyPrice < 12) return 90;
+  if (vixProxyPrice < 15) return 75;
+  if (vixProxyPrice < 20) return 50;
+  if (vixProxyPrice < 25) return 35;
   return 20;
 }
 
@@ -174,11 +182,11 @@ async function run() {
 
     const spy = await getDaily("SPY");
     const qqq = await getDaily("QQQ");
-    const vix = await getDaily("I:VIX");
+    const vixProxy = await getVixProxy();
 
     const spyBars = spy.results || [];
     const qqqBars = qqq.results || [];
-    const vixBars = vix.results || [];
+    const vixBars = vixProxy.data.results || [];
 
     const spyTrend = trendScore(spyBars);
     const qqqTrend = trendScore(qqqBars);
@@ -201,7 +209,8 @@ async function run() {
 
     document.getElementById("spy").innerHTML = `Trend Score: ${spyTrend}/100`;
     document.getElementById("qqq").innerHTML = `Trend Score: ${qqqTrend}/100`;
-    document.getElementById("vix").innerHTML = `${vixLast.toFixed(2)} | Score: ${vixHealth}/100`;
+    document.getElementById("vix").innerHTML =
+      `${vixProxy.label}: ${vixLast.toFixed(2)} | Volatility Score: ${vixHealth}/100`;
     document.getElementById("gamma").innerHTML = `NEUTRAL / PAUSED`;
     document.getElementById("health").innerHTML = health;
     document.getElementById("regime").innerHTML = regime;
@@ -226,7 +235,7 @@ async function run() {
       </div>
     `).join("");
 
-    setStatus("Dashboard loaded without burst requests.");
+    setStatus("Dashboard loaded without index entitlement issue.");
   } catch (err) {
     setStatus("Failed to load. Check Error Log.");
     setError(err.message);
