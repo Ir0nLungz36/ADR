@@ -11,9 +11,6 @@
     .card { background:#12141a; border:1px solid #272b35; border-radius:14px; padding:18px; }
     .score { font-size:44px; font-weight:bold; }
     .muted { color:#9ca3af; }
-    .good { color:#35d07f; }
-    .warn { color:#f5c542; }
-    .bad { color:#ff5c5c; }
     pre { white-space:pre-wrap; color:#ff8080; }
   </style>
 </head>
@@ -34,7 +31,7 @@
   <div class="card"><h2>VIX</h2><div id="vix">Waiting...</div></div>
   <div class="card"><h2>SPY</h2><div id="spy">Waiting...</div></div>
   <div class="card"><h2>QQQ</h2><div id="qqq">Waiting...</div></div>
-  <div class="card"><h2>Gamma State</h2><div id="gamma">Waiting...</div></div>
+  <div class="card"><h2>Gamma State</h2><div id="gamma">Paused to avoid rate limit</div></div>
   <div class="card"><h2>Market Health Score</h2><div id="health" class="score">--</div></div>
 </div>
 
@@ -48,9 +45,20 @@
 
 <script>
 let API_KEY = localStorage.getItem("MASSIVE_API_KEY") || "";
-const WATCHLIST = ["MU","NVDA","MRVL","QQQ","SPY","HIMS","SOFI","AMD","PLTR","META"];
+
+/*
+  Keep this lean.
+  More tickers = more API calls = rate limit.
+*/
+const WATCHLIST = ["MU","NVDA","MRVL","QQQ","SPY","HIMS"];
+
+const DELAY_MS = 1300;
 
 document.getElementById("apiKeyInput").value = API_KEY;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
@@ -88,15 +96,16 @@ async function massive(url) {
     throw new Error(JSON.stringify(data, null, 2));
   }
 
+  await sleep(DELAY_MS);
   return data;
 }
 
 async function getDaily(ticker) {
   const to = new Date().toISOString().slice(0,10);
-  const from = new Date(Date.now() - 60*86400000).toISOString().slice(0,10);
+  const from = new Date(Date.now() - 70*86400000).toISOString().slice(0,10);
 
   return await massive(
-    `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=60`
+    `https://api.massive.com/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=70`
   );
 }
 
@@ -123,28 +132,11 @@ function trendScore(bars) {
   return Math.max(0, Math.min(100, score));
 }
 
-async function getOptions(ticker) {
-  return await massive(
-    `https://api.massive.com/v3/snapshot/options/${ticker}?limit=250`
-  );
-}
-
-function gammaState(options) {
-  const contracts = options.results || [];
-  let netGamma = 0;
-
-  for (const c of contracts) {
-    const type = c.details?.contract_type;
-    const oi = c.open_interest || 0;
-    const gamma = c.greeks?.gamma || 0;
-
-    if (type === "call") netGamma += gamma * oi;
-    if (type === "put") netGamma -= gamma * oi;
-  }
-
-  if (netGamma > 0) return { label:"POSITIVE GAMMA / PINNED", score:75 };
-  if (netGamma < 0) return { label:"NEGATIVE GAMMA / EXPANSION", score:55 };
-  return { label:"NEUTRAL GAMMA", score:50 };
+function vixScore(vixLast) {
+  if (vixLast < 16) return 90;
+  if (vixLast < 20) return 75;
+  if (vixLast < 25) return 45;
+  return 20;
 }
 
 async function scoreCandidate(ticker) {
@@ -160,10 +152,10 @@ async function scoreCandidate(ticker) {
   const trend = trendScore(bars);
 
   let score = 0;
-  if (adr >= 4) score += 25;
-  if (compression <= 0.50) score += 25;
-  if (dollarVol >= 500000000) score += 25;
-  score += trend * 0.25;
+  if (adr >= 4) score += 30;
+  if (compression <= 0.50) score += 30;
+  if (dollarVol >= 500000000) score += 20;
+  score += trend * 0.20;
 
   return {
     ticker,
@@ -178,7 +170,7 @@ async function scoreCandidate(ticker) {
 async function run() {
   try {
     setError("");
-    setStatus("Loading Massive data...");
+    setStatus("Loading slowly to avoid Massive rate limit...");
 
     const spy = await getDaily("SPY");
     const qqq = await getDaily("QQQ");
@@ -188,24 +180,18 @@ async function run() {
     const qqqBars = qqq.results || [];
     const vixBars = vix.results || [];
 
-    const spyScore = trendScore(spyBars);
-    const qqqScore = trendScore(qqqBars);
+    const spyTrend = trendScore(spyBars);
+    const qqqTrend = trendScore(qqqBars);
     const vixLast = vixBars[vixBars.length-1]?.c || 0;
+    const vixHealth = vixScore(vixLast);
 
-    let vixScore = 50;
-    if (vixLast < 16) vixScore = 90;
-    else if (vixLast < 20) vixScore = 75;
-    else if (vixLast < 25) vixScore = 45;
-    else vixScore = 20;
-
-    const spyOptions = await getOptions("SPY");
-    const gamma = gammaState(spyOptions);
+    const gammaScore = 50;
 
     const health = Math.round(
-      spyScore * 0.30 +
-      qqqScore * 0.30 +
-      vixScore * 0.20 +
-      gamma.score * 0.20
+      spyTrend * 0.35 +
+      qqqTrend * 0.35 +
+      vixHealth * 0.20 +
+      gammaScore * 0.10
     );
 
     let regime = "CHOP / WAIT";
@@ -213,15 +199,16 @@ async function run() {
     else if (health >= 60) regime = "SELECTIVE LONGS";
     else if (health <= 35) regime = "RISK OFF";
 
-    document.getElementById("spy").innerHTML = `Trend Score: ${spyScore}/100`;
-    document.getElementById("qqq").innerHTML = `Trend Score: ${qqqScore}/100`;
-    document.getElementById("vix").innerHTML = `${vixLast.toFixed(2)} | Score: ${vixScore}/100`;
-    document.getElementById("gamma").innerHTML = gamma.label;
+    document.getElementById("spy").innerHTML = `Trend Score: ${spyTrend}/100`;
+    document.getElementById("qqq").innerHTML = `Trend Score: ${qqqTrend}/100`;
+    document.getElementById("vix").innerHTML = `${vixLast.toFixed(2)} | Score: ${vixHealth}/100`;
+    document.getElementById("gamma").innerHTML = `NEUTRAL / PAUSED`;
     document.getElementById("health").innerHTML = health;
     document.getElementById("regime").innerHTML = regime;
 
     const scored = [];
     for (const t of WATCHLIST) {
+      setStatus(`Scanning ${t} slowly...`);
       const s = await scoreCandidate(t);
       if (s) scored.push(s);
     }
@@ -239,7 +226,7 @@ async function run() {
       </div>
     `).join("");
 
-    setStatus("Dashboard loaded.");
+    setStatus("Dashboard loaded without burst requests.");
   } catch (err) {
     setStatus("Failed to load. Check Error Log.");
     setError(err.message);
