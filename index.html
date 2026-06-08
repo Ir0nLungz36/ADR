@@ -1,3 +1,17 @@
+Replace your full `index.html` with this upgraded version.
+
+It adds:
+
+```txt
+Sector Breadth
+Semiconductor leadership logic
+Weak areas
+Best vehicles
+Institutional-style market summary
+XLF + XLE
+```
+
+```html
 <!DOCTYPE html>
 <html>
 <head>
@@ -33,13 +47,13 @@
 
 <div class="grid">
   <div class="card">
-    <h2>Regime Card</h2>
-    <div id="regime">Waiting...</div>
+    <h2>Market Health</h2>
+    <div id="health" class="score">--</div>
   </div>
 
   <div class="card">
-    <h2>Market Health Score</h2>
-    <div id="health" class="score">--</div>
+    <h2>Regime</h2>
+    <div id="regime">Waiting...</div>
   </div>
 
   <div class="card">
@@ -47,6 +61,9 @@
     <div id="vix">Waiting...</div>
   </div>
 </div>
+
+<h2>Institutional Market Read</h2>
+<div id="marketRead" class="card">Waiting...</div>
 
 <h2>Core Market Reads</h2>
 <div id="core" class="grid"></div>
@@ -63,7 +80,17 @@
 let API_KEY = localStorage.getItem("FINNHUB_API_KEY") || "";
 let MANUAL_VIX = localStorage.getItem("MANUAL_VIX") || "";
 
-const TICKERS = ["SPY", "QQQ", "IWM", "XLK", "SOXX"];
+/*
+  Core:
+  SPY = broad market
+  QQQ = growth / mega-cap tech
+  IWM = breadth / small caps
+  XLK = technology sector
+  SOXX = semiconductor leadership
+  XLF = financial liquidity
+  XLE = energy / inflation
+*/
+const TICKERS = ["SPY", "QQQ", "IWM", "XLK", "SOXX", "XLF", "XLE"];
 
 document.getElementById("apiKeyInput").value = API_KEY;
 document.getElementById("vixInput").value = MANUAL_VIX;
@@ -137,8 +164,6 @@ async function loadQuotes() {
     setStatus(`Loading ${symbol} from Finnhub...`);
     const q = await finnhubQuote(symbol);
     results.push(q);
-
-    // Keeps the dashboard gentle on free/API limits
     await sleep(350);
   }
 
@@ -171,17 +196,75 @@ function classForScore(score) {
   return "bad";
 }
 
-function regimeLabel(score, vix, leader) {
-  if (score >= 80 && vix < 20) return `RISK ON / ${leader} LEADERSHIP`;
-  if (score >= 65) return `SELECTIVE LONGS / ${leader} LEADERSHIP`;
+function formatTime(unixSeconds) {
+  if (!unixSeconds) return "N/A";
+  return new Date(unixSeconds * 1000).toLocaleTimeString();
+}
+
+function leadershipLabel(byTicker) {
+  const spy = byTicker.SPY?.changePercent || 0;
+  const qqq = byTicker.QQQ?.changePercent || 0;
+  const iwm = byTicker.IWM?.changePercent || 0;
+  const xlk = byTicker.XLK?.changePercent || 0;
+  const soxx = byTicker.SOXX?.changePercent || 0;
+  const xlf = byTicker.XLF?.changePercent || 0;
+  const xle = byTicker.XLE?.changePercent || 0;
+
+  if (soxx > xlk + 2) return "SEMICONDUCTOR LEADERSHIP";
+  if (xlk > spy && xlk > xlf && xlk > xle) return "TECHNOLOGY LEADERSHIP";
+  if (iwm > spy && iwm > qqq) return "SMALL CAP LEADERSHIP";
+  if (xlf > spy && xlf > qqq) return "FINANCIAL LEADERSHIP";
+  if (xle > spy && xle > qqq) return "ENERGY LEADERSHIP";
+  return "BROAD MARKET LEADERSHIP";
+}
+
+function regimeLabel(score, vix, leadership) {
+  if (score >= 80 && vix < 20) return `RISK ON / ${leadership}`;
+  if (score >= 65) return `SELECTIVE LONGS / ${leadership}`;
   if (score >= 45) return "CHOP / WAIT FOR CONFIRMATION";
   if (score >= 30) return "DEFENSIVE / REDUCE SIZE";
   return "RISK OFF / PUTS FAVORED";
 }
 
-function formatTime(unixSeconds) {
-  if (!unixSeconds) return "N/A";
-  return new Date(unixSeconds * 1000).toLocaleTimeString();
+function getWeakAreas(scored) {
+  return [...scored]
+    .filter(x => x.changePercent < 0)
+    .sort((a,b) => a.changePercent - b.changePercent)
+    .slice(0,3);
+}
+
+function getBestVehicles(scored) {
+  return [...scored]
+    .filter(x => ["SOXX", "QQQ", "XLK", "SPY", "IWM"].includes(x.ticker))
+    .sort((a,b) => b.score - a.score)
+    .slice(0,3);
+}
+
+function breadthScore(scored) {
+  const green = scored.filter(x => x.changePercent > 0).length;
+  return Math.round((green / scored.length) * 100);
+}
+
+function breadthLabel(score) {
+  if (score >= 80) return "POSITIVE";
+  if (score >= 55) return "MIXED POSITIVE";
+  if (score >= 40) return "MIXED / CHOP";
+  return "NEGATIVE";
+}
+
+function volatilityLabel(vix) {
+  if (vix < 16) return "LOW / CALM";
+  if (vix < 20) return "MODERATE / WATCHFUL";
+  if (vix < 25) return "ELEVATED";
+  return "HIGH RISK";
+}
+
+function riskAppetiteLabel(health, vix) {
+  if (health >= 80 && vix < 20) return "HIGH";
+  if (health >= 65) return "MODERATE-HIGH";
+  if (health >= 45) return "NEUTRAL";
+  if (health >= 30) return "LOW";
+  return "VERY LOW";
 }
 
 async function run() {
@@ -201,34 +284,63 @@ async function run() {
     scored.forEach(x => byTicker[x.ticker] = x);
 
     const vixHealth = vixScore(vix);
+    const breadth = breadthScore(scored);
+    const leadership = leadershipLabel(byTicker);
 
     const health = Math.round(
-      (byTicker.SPY?.score || 50)  * 0.20 +
-      (byTicker.QQQ?.score || 50)  * 0.25 +
+      (byTicker.SPY?.score || 50)  * 0.17 +
+      (byTicker.QQQ?.score || 50)  * 0.22 +
       (byTicker.IWM?.score || 50)  * 0.10 +
-      (byTicker.XLK?.score || 50)  * 0.20 +
-      (byTicker.SOXX?.score || 50) * 0.15 +
-      vixHealth                   * 0.10
+      (byTicker.XLK?.score || 50)  * 0.18 +
+      (byTicker.SOXX?.score || 50) * 0.18 +
+      (byTicker.XLF?.score || 50)  * 0.05 +
+      (byTicker.XLE?.score || 50)  * 0.05 +
+      vixHealth                   * 0.05
     );
 
+    const regime = regimeLabel(health, vix, leadership);
     const leaders = [...scored].sort((a,b) => b.score - a.score);
-    const leader = leaders[0]?.ticker || "NO";
+    const weakAreas = getWeakAreas(scored);
+    const bestVehicles = getBestVehicles(scored);
 
     document.getElementById("health").innerHTML =
       `<span class="${classForScore(health)}">${health}</span>`;
 
     document.getElementById("regime").innerHTML =
-      `<h3 class="${classForScore(health)}">${regimeLabel(health, vix, leader)}</h3>
-       <p class="muted">Finnhub quotes: SPY, QQQ, IWM, XLK, SOXX + manual VIX.</p>`;
+      `<h3 class="${classForScore(health)}">${regime}</h3>
+       <p class="muted">Weighted by SPY, QQQ, IWM, XLK, SOXX, XLF, XLE + manual VIX.</p>`;
 
     document.getElementById("vix").innerHTML =
-      `${vix.toFixed(2)} | VIX Score: ${vixHealth}/100`;
+      `${vix.toFixed(2)} | VIX Score: ${vixHealth}/100<br>
+       <span class="muted">${volatilityLabel(vix)}</span>`;
+
+    document.getElementById("marketRead").innerHTML = `
+      <h2>MARKET HEALTH: <span class="${classForScore(health)}">${health}</span></h2>
+
+      <p><strong>REGIME:</strong> ${regime}</p>
+      <p><strong>LEADERSHIP:</strong> ${leadership}</p>
+      <p><strong>BREADTH:</strong> ${breadthLabel(breadth)} — ${breadth}/100</p>
+      <p><strong>VOLATILITY:</strong> ${volatilityLabel(vix)}</p>
+      <p><strong>RISK APPETITE:</strong> ${riskAppetiteLabel(health, vix)}</p>
+
+      <p><strong>BEST VEHICLES:</strong>
+        ${bestVehicles.map(x => x.ticker).join(" / ") || "NONE"}
+      </p>
+
+      <p><strong>WEAK AREAS:</strong>
+        ${weakAreas.length ? weakAreas.map(x => `${x.ticker} ${Number(x.changePercent).toFixed(2)}%`).join(" / ") : "NONE"}
+      </p>
+    `;
 
     document.getElementById("core").innerHTML = scored.map(x => `
       <div class="card">
         <h2>${x.ticker}</h2>
         <p>Current: $${Number(x.current).toFixed(2)}</p>
-        <p>Change: <span class="${x.changePercent >= 0 ? "good" : "bad"}">${Number(x.changePercent).toFixed(2)}%</span></p>
+        <p>Change:
+          <span class="${x.changePercent >= 0 ? "good" : "bad"}">
+            ${Number(x.changePercent).toFixed(2)}%
+          </span>
+        </p>
         <p>Open: $${Number(x.open).toFixed(2)}</p>
         <p>High / Low: $${Number(x.high).toFixed(2)} / $${Number(x.low).toFixed(2)}</p>
         <p>Prev Close: $${Number(x.prevClose).toFixed(2)}</p>
@@ -260,3 +372,4 @@ if (API_KEY && MANUAL_VIX) {
 
 </body>
 </html>
+```
